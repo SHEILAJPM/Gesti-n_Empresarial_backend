@@ -127,6 +127,11 @@ public class UsuarioService implements UserDetailsService {
         return usuarioRepository.findByUsername(username).map(Usuario::getTrabajadorId).orElse(null);
     }
 
+    @Transactional(readOnly = true)
+    public boolean existe(String username) {
+        return usuarioRepository.existsByUsername(username);
+    }
+
     /* Crea un usuario solo si todavía no existe (usuarios iniciales) */
     @Transactional
     public void crearSiNoExiste(String username, String password, Rol rol) {

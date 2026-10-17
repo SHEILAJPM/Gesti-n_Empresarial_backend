@@ -58,12 +58,13 @@ La API queda en <http://localhost:8080>.
 
 ## Variables de entorno (`.env`)
 
-`.env` nunca se sube al repositorio. Solo la base de datos es obligatoria.
+`.env` nunca se sube al repositorio. Son obligatorias la base de datos y, en una base nueva, al menos `ADMIN_PASSWORD`.
 
 | Variable | Para qué sirve |
 |---|---|
 | `DATABASE_URL` | Conexión de la aplicación (pooled) |
 | `DATABASE_URL_UNPOOLED` | Conexión directa para las migraciones de Flyway |
+| `ADMIN_PASSWORD`, `RRHH_PASSWORD`, `CONTABILIDAD_PASSWORD`, `ADMINISTRACION_PASSWORD` | Contraseñas de los usuarios iniciales. Ver [Autenticación y roles](#autenticación-y-roles) |
 | `APISUNAT_PERSONA_ID`, `APISUNAT_PERSONA_TOKEN` | Credenciales de APISUNAT. Sin ellas se usa el simulador local de SUNAT |
 | `EMISOR_RUC`, `EMISOR_RAZON_SOCIAL` | Empresa que emite los comprobantes |
 | `DECOLECTA_TOKEN` | Token para consultar DNI y RUC. Se crea gratis en <https://decolecta.com/profile>. Sin él, el resto del sistema funciona y la consulta responde 503 |
@@ -72,16 +73,16 @@ La API queda en <http://localhost:8080>.
 
 La API usa HTTP Basic: cada petición envía `Authorization: Basic <usuario:clave en Base64>`. `GET /api/auth/me` devuelve el usuario, su rol y, si lo tiene, el trabajador vinculado.
 
-Al arrancar por primera vez se crean estos usuarios (solo si no existen):
+Al arrancar por primera vez se crean estos usuarios, solo si no existen y solo si su contraseña está en `.env`:
 
-| Usuario | Contraseña | Rol |
+| Usuario | Rol | Variable con la contraseña |
 |---|---|---|
-| `admin` | `Admin123` | ADMIN |
-| `rrhh1` | `Rrhh123` | RRHH |
-| `contabilidad1` | `Conta123` | CONTABILIDAD |
-| `administracion1` | `AdminArea123` | ADMINISTRACION |
+| `admin` | ADMIN | `ADMIN_PASSWORD` |
+| `rrhh1` | RRHH | `RRHH_PASSWORD` |
+| `contabilidad1` | CONTABILIDAD | `CONTABILIDAD_PASSWORD` |
+| `administracion1` | ADMINISTRACION | `ADMINISTRACION_PASSWORD` |
 
-> Son contraseñas de desarrollo. Cámbialas antes de usar el sistema con datos reales.
+Las contraseñas no están en el código. En el perfil `local` (base H2 en tu computadora) se usan las de desarrollo: `Admin123`, `Rrhh123`, `Conta123` y `AdminArea123`.
 
 Los roles `TRABAJADOR`, `VENDEDOR` y `ALMACEN` son del personal: cada cuenta va vinculada a la ficha de un trabajador y solo usa el portal (`/api/mi/**`).
 
