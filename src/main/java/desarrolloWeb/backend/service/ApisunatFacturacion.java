@@ -6,9 +6,12 @@ import desarrolloWeb.backend.dto.RespuestaFacturacion;
 import desarrolloWeb.backend.entity.EstadoSunat;
 import desarrolloWeb.backend.util.DocumentoUbl;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,7 +26,17 @@ public class ApisunatFacturacion implements FacturacionElectronica {
     private final FacturacionProperties.Emisor emisor;
 
     public ApisunatFacturacion(FacturacionProperties propiedades) {
-        this(propiedades, RestClient.builder());
+        this(propiedades, RestClient.builder().requestFactory(fabricaConTimeouts()));
+    }
+
+    /* Sin límite, un APISUNAT lento retendría la conexión a la base (la venta espera dentro de su transacción)
+       y con el pool de Neon (5 conexiones) bastarían unas pocas ventas para colgar el sistema.
+       Si se agota el tiempo, la venta queda registrada con estado ERROR y se puede reenviar. */
+    private static JdkClientHttpRequestFactory fabricaConTimeouts() {
+        JdkClientHttpRequestFactory fabrica = new JdkClientHttpRequestFactory(
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
+        fabrica.setReadTimeout(Duration.ofSeconds(15));
+        return fabrica;
     }
 
     /* El builder se recibe para poder probar el cliente con un servidor simulado */
