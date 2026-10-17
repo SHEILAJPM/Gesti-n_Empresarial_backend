@@ -93,6 +93,11 @@ public class GlobalExceptionHandler {
         return responder(HttpStatus.CONFLICT, ex.getMessage(), req);
     }
 
+    @ExceptionHandler(ServicioExternoException.class)
+    public ResponseEntity<ErrorResponse> manejarServicioExterno(ServicioExternoException ex, HttpServletRequest req) {
+        return responder(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> manejarIntegridad(DataIntegrityViolationException ex, HttpServletRequest req) {
         return responder(HttpStatus.CONFLICT,

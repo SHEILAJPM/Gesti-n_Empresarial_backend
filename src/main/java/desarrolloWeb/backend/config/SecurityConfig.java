@@ -76,6 +76,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/facturacion/estado")
                     .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION")
 
+                // Autocompletar nombre o razón social al registrar clientes, proveedores o trabajadores
+                .requestMatchers(HttpMethod.GET, "/api/consultas/**")
+                    .hasAnyRole("ADMIN", "RRHH", "CONTABILIDAD", "ADMINISTRACION")
+
                 // Contabilidad necesita la lista de trabajadores para registrar pagos
                 .requestMatchers(HttpMethod.GET, "/api/personal")
                     .hasAnyRole("ADMIN", "RRHH", "CONTABILIDAD")
