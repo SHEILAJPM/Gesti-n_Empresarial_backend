@@ -126,7 +126,7 @@ Todos devuelven JSON. Los errores tienen siempre la misma forma: `{ timestamp, s
 Ejemplo:
 
 ```bash
-curl -u admin:Admin123 http://localhost:8080/api/consultas/documento/20601030013
+curl -u admin:TU_CLAVE http://localhost:8080/api/consultas/documento/20601030013
 ```
 
 En la raíz hay archivos JSON de ejemplo (`trabajador.json`, `asistencia.json`, `documento.json`) para probar las peticiones `POST`.
