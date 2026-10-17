@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ public class PagoService {
     }
 
     @Transactional
-    public Pago registrar(String documentoIdentidad, String concepto, Double monto, LocalDate fechaProgramada) {
+    public Pago registrar(String documentoIdentidad, String concepto, BigDecimal monto, LocalDate fechaProgramada) {
         validarDatos(concepto, monto, fechaProgramada);
         Trabajador trabajador = personalService.buscarPorDocumento(documentoIdentidad)
                 .orElseThrow(() -> new NoSuchElementException(
@@ -59,7 +60,7 @@ public class PagoService {
     }
 
     @Transactional
-    public Pago registrarProveedor(String ruc, String concepto, Double monto, LocalDate fechaProgramada) {
+    public Pago registrarProveedor(String ruc, String concepto, BigDecimal monto, LocalDate fechaProgramada) {
         validarDatos(concepto, monto, fechaProgramada);
         Proveedor proveedor = proveedorService.buscarPorRuc(ruc)
                 .orElseThrow(() -> new NoSuchElementException("No existe un proveedor con RUC " + ruc));
@@ -85,7 +86,7 @@ public class PagoService {
     }
 
     public Pago registrar(String tipoBeneficiario, String documentoIdentidad, String rucProveedor,
-                          String concepto, Double monto, LocalDate fechaProgramada) {
+                          String concepto, BigDecimal monto, LocalDate fechaProgramada) {
         if (tipoBeneficiario == null || tipoBeneficiario.isBlank()) {
             tipoBeneficiario = rucProveedor != null && !rucProveedor.isBlank()
                     ? "PROVEEDOR" : "TRABAJADOR";
@@ -99,11 +100,11 @@ public class PagoService {
         };
     }
 
-    private void validarDatos(String concepto, Double monto, LocalDate fechaProgramada) {
+    private void validarDatos(String concepto, BigDecimal monto, LocalDate fechaProgramada) {
         if (concepto == null || concepto.isBlank()) {
             throw new IllegalArgumentException("El concepto del pago es obligatorio");
         }
-        if (monto == null || !Double.isFinite(monto) || monto <= 0) {
+        if (monto == null || monto.signum() <= 0) {
             throw new IllegalArgumentException("El monto debe ser mayor que cero");
         }
         if (fechaProgramada == null) {

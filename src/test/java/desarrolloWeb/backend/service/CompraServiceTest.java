@@ -22,7 +22,6 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -78,7 +77,7 @@ class CompraServiceTest {
                 () -> assertEquals(new BigDecimal("118.00"), respuesta.montoTotal()),
                 () -> assertEquals(new BigDecimal("0.1800"), respuesta.tasaAplicada())
         );
-        verify(pagoService).registrarProveedor(RUC, "Compra F001-1", 118.0, FECHA);
+        verify(pagoService).registrarProveedor(RUC, "Compra F001-1", new BigDecimal("118.00"), FECHA);
     }
 
     @Test
@@ -119,7 +118,7 @@ class CompraServiceTest {
 
         assertTrue(error.getMessage().startsWith("ERROR SIMULADO"));
         verify(compraRepository).saveAndFlush(any(Compra.class));
-        verify(pagoService, never()).registrarProveedor(anyString(), anyString(), anyDouble(), any());
+        verify(pagoService, never()).registrarProveedor(anyString(), anyString(), any(BigDecimal.class), any());
     }
 
     @Test

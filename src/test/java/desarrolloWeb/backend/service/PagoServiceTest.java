@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -42,14 +43,14 @@ class PagoServiceTest {
         when(personalService.buscarPorDocumento("99999999")).thenReturn(Optional.empty());
 
         assertThrows(NoSuchElementException.class,
-                () -> pagoService.registrar("99999999", "Sueldo agosto", 1500.0, LocalDate.of(2026, 8, 31)));
+                () -> pagoService.registrar("99999999", "Sueldo agosto", new BigDecimal("1500.00"), LocalDate.of(2026, 8, 31)));
     }
 
     @Test
     void registrarQuedaComoPendienteLigadoAlTrabajador() {
         when(personalService.buscarPorDocumento("70001234")).thenReturn(Optional.of(trabajador));
 
-        Pago pago = pagoService.registrar("70001234", "Sueldo agosto", 1500.0, LocalDate.of(2026, 8, 31));
+        Pago pago = pagoService.registrar("70001234", "Sueldo agosto", new BigDecimal("1500.00"), LocalDate.of(2026, 8, 31));
 
         assertNotNull(pago.getId());
         assertEquals("TRABAJADOR", pago.getTipoBeneficiario());
@@ -60,11 +61,26 @@ class PagoServiceTest {
     }
 
     @Test
+    void elMontoSeGuardaExactoEnSolesYCentimos() {
+        when(personalService.buscarPorDocumento("70001234")).thenReturn(Optional.of(trabajador));
+
+        // 0.1 + 0.2 en double da 0.30000000000000004; con BigDecimal no se pierde ni se inventa un céntimo
+        Pago pago = pagoService.registrar("70001234", "Bono", new BigDecimal("0.1").add(new BigDecimal("0.2")),
+                LocalDate.of(2026, 8, 31));
+        Pago sueldo = pagoService.registrar("70001234", "Sueldo", new BigDecimal("2174.995"), LocalDate.of(2026, 8, 31));
+
+        assertEquals(new BigDecimal("0.30"), pago.getMonto());
+        assertEquals(new BigDecimal("2175.00"), sueldo.getMonto());
+        assertThrows(IllegalArgumentException.class,
+                () -> pagoService.registrar("70001234", "Nada", BigDecimal.ZERO, LocalDate.of(2026, 8, 31)));
+    }
+
+    @Test
     void registrarProveedorConRucInexistenteLanzaExcepcion() {
         when(proveedorService.buscarPorRuc("99999999999")).thenReturn(Optional.empty());
 
         assertThrows(NoSuchElementException.class,
-                () -> pagoService.registrarProveedor("99999999999", "Factura F001-1", 500.0, LocalDate.of(2026, 8, 31)));
+                () -> pagoService.registrarProveedor("99999999999", "Factura F001-1", new BigDecimal("500.00"), LocalDate.of(2026, 8, 31)));
     }
 
     @Test
@@ -72,7 +88,7 @@ class PagoServiceTest {
         when(proveedorService.buscarPorRuc("20123456789")).thenReturn(Optional.of(proveedor));
 
         Pago pago = pagoService.registrarProveedor(
-                "20123456789", "Factura F001-1", 500.0, LocalDate.of(2026, 8, 31));
+                "20123456789", "Factura F001-1", new BigDecimal("500.00"), LocalDate.of(2026, 8, 31));
 
         assertNotNull(pago.getId());
         assertEquals("PROVEEDOR", pago.getTipoBeneficiario());
@@ -85,7 +101,7 @@ class PagoServiceTest {
     @Test
     void marcarComoPagadoActualizaEstadoYFecha() {
         when(personalService.buscarPorDocumento("70001234")).thenReturn(Optional.of(trabajador));
-        Pago pago = pagoService.registrar("70001234", "Sueldo agosto", 1500.0, LocalDate.of(2026, 8, 31));
+        Pago pago = pagoService.registrar("70001234", "Sueldo agosto", new BigDecimal("1500.00"), LocalDate.of(2026, 8, 31));
 
         Pago pagado = pagoService.marcarComoPagado(pago.getId());
 
@@ -96,7 +112,7 @@ class PagoServiceTest {
     @Test
     void marcarComoPagadoDosVecesLanzaExcepcion() {
         when(personalService.buscarPorDocumento("70001234")).thenReturn(Optional.of(trabajador));
-        Pago pago = pagoService.registrar("70001234", "Sueldo agosto", 1500.0, LocalDate.of(2026, 8, 31));
+        Pago pago = pagoService.registrar("70001234", "Sueldo agosto", new BigDecimal("1500.00"), LocalDate.of(2026, 8, 31));
         pagoService.marcarComoPagado(pago.getId());
 
         assertThrows(IllegalStateException.class, () -> pagoService.marcarComoPagado(pago.getId()));
@@ -105,8 +121,8 @@ class PagoServiceTest {
     @Test
     void listarPendientesExcluyeLosYaPagados() {
         when(personalService.buscarPorDocumento("70001234")).thenReturn(Optional.of(trabajador));
-        Pago pendiente = pagoService.registrar("70001234", "Sueldo agosto", 1500.0, LocalDate.of(2026, 8, 31));
-        Pago pagado = pagoService.registrar("70001234", "Sueldo julio", 1500.0, LocalDate.of(2026, 7, 31));
+        Pago pendiente = pagoService.registrar("70001234", "Sueldo agosto", new BigDecimal("1500.00"), LocalDate.of(2026, 8, 31));
+        Pago pagado = pagoService.registrar("70001234", "Sueldo julio", new BigDecimal("1500.00"), LocalDate.of(2026, 7, 31));
         pagoService.marcarComoPagado(pagado.getId());
 
         List<Pago> pendientes = pagoService.listarPendientes();
@@ -118,8 +134,8 @@ class PagoServiceTest {
     @Test
     void listarPorTrabajadorDevuelveSoloSusPagos() {
         when(personalService.buscarPorDocumento("70001234")).thenReturn(Optional.of(trabajador));
-        pagoService.registrar("70001234", "Sueldo agosto", 1500.0, LocalDate.of(2026, 8, 31));
-        pagoService.registrar("70001234", "Sueldo julio", 1500.0, LocalDate.of(2026, 7, 31));
+        pagoService.registrar("70001234", "Sueldo agosto", new BigDecimal("1500.00"), LocalDate.of(2026, 8, 31));
+        pagoService.registrar("70001234", "Sueldo julio", new BigDecimal("1500.00"), LocalDate.of(2026, 7, 31));
 
         List<Pago> pagos = pagoService.listarPorTrabajador(trabajador.getId());
 

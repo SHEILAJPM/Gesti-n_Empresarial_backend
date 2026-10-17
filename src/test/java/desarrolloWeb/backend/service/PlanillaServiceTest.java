@@ -25,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -128,7 +127,7 @@ class PlanillaServiceTest {
         verify(planillaRepository).save(captor.capture());
         Planilla generada = captor.getValue();
         when(planillaRepository.buscarParaActualizar(5L)).thenReturn(Optional.of(generada));
-        when(pagoService.registrar(any(String.class), any(String.class), anyDouble(), any(LocalDate.class)))
+        when(pagoService.registrar(any(String.class), any(String.class), any(BigDecimal.class), any(LocalDate.class)))
                 .thenAnswer(inv -> {
                     Pago pago = new Pago();
                     pago.setId(inv.getArgument(0, String.class).endsWith("1") ? 11L : 12L);
@@ -139,8 +138,8 @@ class PlanillaServiceTest {
 
         assertEquals(EstadoPlanilla.APROBADA, r.estado());
         assertEquals("contabilidad1", r.aprobadaPor());
-        verify(pagoService, times(2)).registrar(any(String.class), eq("Sueldo setiembre 2026"), anyDouble(), eq(LocalDate.of(2026, 9, 30)));
-        verify(pagoService).registrar(eq("70000001"), any(String.class), eq(2175.00), any(LocalDate.class));
+        verify(pagoService, times(2)).registrar(any(String.class), eq("Sueldo setiembre 2026"), any(BigDecimal.class), eq(LocalDate.of(2026, 9, 30)));
+        verify(pagoService).registrar(eq("70000001"), any(String.class), eq(new BigDecimal("2175.00")), any(LocalDate.class));
         assertTrue(r.detalles().stream().allMatch(d -> d.pagoId() != null));
     }
 
@@ -152,6 +151,6 @@ class PlanillaServiceTest {
 
         assertThrows(ReglaNegocioException.class, () -> planillaService.aprobar(1L, LocalDate.of(2026, 9, 30), "contabilidad1"));
         assertThrows(ReglaNegocioException.class, () -> planillaService.eliminar(1L));
-        verify(pagoService, never()).registrar(any(String.class), any(String.class), anyDouble(), any(LocalDate.class));
+        verify(pagoService, never()).registrar(any(String.class), any(String.class), any(BigDecimal.class), any(LocalDate.class));
     }
 }

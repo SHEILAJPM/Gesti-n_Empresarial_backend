@@ -105,7 +105,7 @@ public class PlanillaService {
         }
         String concepto = "Sueldo " + nombrePeriodo(YearMonth.of(planilla.getAnio(), planilla.getMes()));
         for (PlanillaDetalle d : planilla.getDetalles()) {
-            Pago pago = pagoService.registrar(d.getDocumentoIdentidad(), concepto, d.getNeto().doubleValue(), fechaPago);
+            Pago pago = pagoService.registrar(d.getDocumentoIdentidad(), concepto, d.getNeto(), fechaPago);
             d.setPagoId(pago.getId());
         }
         planilla.setEstado(EstadoPlanilla.APROBADA);

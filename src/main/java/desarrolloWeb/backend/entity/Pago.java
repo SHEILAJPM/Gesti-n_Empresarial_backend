@@ -98,14 +98,12 @@ public class Pago {
         this.concepto = concepto;
     }
 
-    public Double getMonto() {
-        return monto == null ? null : monto.doubleValue();
+    public BigDecimal getMonto() {
+        return monto;
     }
 
-    public void setMonto(Double monto) {
-        this.monto = monto == null
-                ? null
-                : BigDecimal.valueOf(monto).setScale(2, RoundingMode.HALF_UP);
+    public void setMonto(BigDecimal monto) {
+        this.monto = monto == null ? null : monto.setScale(2, RoundingMode.HALF_UP);
     }
 
     public LocalDate getFechaProgramada() {

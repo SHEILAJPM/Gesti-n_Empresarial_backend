@@ -1,5 +1,6 @@
 package desarrolloWeb.backend.dto;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public record RegistrarPagoRequest(
@@ -7,6 +8,6 @@ public record RegistrarPagoRequest(
         String documentoIdentidad,
         String rucProveedor,
         String concepto,
-        Double monto,
+        BigDecimal monto,
         LocalDate fechaProgramada) {
 }

@@ -70,7 +70,7 @@ public class CompraService {
         }
 
         pagoService.registrarProveedor(request.ruc(), "Compra " + request.numeroComprobante(),
-                guardada.getMontoTotal().doubleValue(), request.fecha());
+                guardada.getMontoTotal(), request.fecha());
 
         return toResponse(guardada);
     }
