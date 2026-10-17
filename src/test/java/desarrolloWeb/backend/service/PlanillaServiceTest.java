@@ -127,7 +127,7 @@ class PlanillaServiceTest {
         org.mockito.ArgumentCaptor<Planilla> captor = org.mockito.ArgumentCaptor.forClass(Planilla.class);
         verify(planillaRepository).save(captor.capture());
         Planilla generada = captor.getValue();
-        when(planillaRepository.findById(5L)).thenReturn(Optional.of(generada));
+        when(planillaRepository.buscarParaActualizar(5L)).thenReturn(Optional.of(generada));
         when(pagoService.registrar(any(String.class), any(String.class), anyDouble(), any(LocalDate.class)))
                 .thenAnswer(inv -> {
                     Pago pago = new Pago();
@@ -148,7 +148,7 @@ class PlanillaServiceTest {
     void noSeApruebaDosVecesNiSeEliminaAprobada() {
         Planilla aprobada = new Planilla();
         aprobada.setEstado(EstadoPlanilla.APROBADA);
-        when(planillaRepository.findById(1L)).thenReturn(Optional.of(aprobada));
+        when(planillaRepository.buscarParaActualizar(1L)).thenReturn(Optional.of(aprobada));
 
         assertThrows(ReglaNegocioException.class, () -> planillaService.aprobar(1L, LocalDate.of(2026, 9, 30), "contabilidad1"));
         assertThrows(ReglaNegocioException.class, () -> planillaService.eliminar(1L));

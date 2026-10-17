@@ -113,7 +113,8 @@ public class PagoService {
 
     @Transactional
     public Pago marcarComoPagado(Long id) {
-        Pago pago = buscarPorId(id)
+        Optional<Pago> encontrado = pagoRepository != null ? pagoRepository.buscarParaActualizar(id) : buscarPorId(id);
+        Pago pago = encontrado
                 .orElseThrow(() -> new NoSuchElementException("No existe un pago con id " + id));
 
         if ("PAGADO".equals(pago.getEstado())) {

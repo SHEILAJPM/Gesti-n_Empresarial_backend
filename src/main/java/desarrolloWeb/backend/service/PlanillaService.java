@@ -99,7 +99,7 @@ public class PlanillaService {
 
     @Transactional
     public PlanillaResponse aprobar(Long id, LocalDate fechaPago, String usuario) {
-        Planilla planilla = obtenerEntidad(id);
+        Planilla planilla = obtenerParaActualizar(id);
         if (planilla.getEstado() != EstadoPlanilla.BORRADOR) {
             throw new ReglaNegocioException("La planilla ya está aprobada");
         }
@@ -117,7 +117,7 @@ public class PlanillaService {
 
     @Transactional
     public void eliminar(Long id) {
-        Planilla planilla = obtenerEntidad(id);
+        Planilla planilla = obtenerParaActualizar(id);
         if (planilla.getEstado() == EstadoPlanilla.APROBADA) {
             throw new ReglaNegocioException("Una planilla aprobada no se puede eliminar: ya generó los pagos");
         }
@@ -126,6 +126,12 @@ public class PlanillaService {
 
     private Planilla obtenerEntidad(Long id) {
         return planillaRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No existe la planilla " + id));
+    }
+
+    /* Bloquea la fila hasta terminar la transacción: aprobar o eliminar no pueden pisarse entre sí */
+    private Planilla obtenerParaActualizar(Long id) {
+        return planillaRepository.buscarParaActualizar(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("No existe la planilla " + id));
     }
 
