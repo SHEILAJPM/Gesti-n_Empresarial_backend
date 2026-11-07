@@ -115,6 +115,15 @@ public class SecurityConfig {
                     "/api/documentos", "/api/documentos/**"
                 ).hasAnyRole("ADMIN", "RRHH")
 
+                // Inventario: Almacén registra ingresos, salidas y conteos; quien vende, factura o revisa consulta el stock.
+                // La lista de compras para vincular ingresos solo la ve quien recibe mercadería
+                .requestMatchers(HttpMethod.GET, "/api/inventario/compras")
+                    .hasAnyRole("ADMIN", "ADMINISTRACION", "ALMACEN")
+                .requestMatchers(HttpMethod.GET, "/api/inventario", "/api/inventario/**")
+                    .hasAnyRole("ADMIN", "ADMINISTRACION", "CONTABILIDAD", "ALMACEN", "VENDEDOR")
+                .requestMatchers("/api/inventario", "/api/inventario/**")
+                    .hasAnyRole("ADMIN", "ADMINISTRACION", "ALMACEN")
+
                 // Catálogo de productos y servicios: lo consulta quien factura o revisa ventas, lo edita quien factura
                 .requestMatchers(HttpMethod.GET, "/api/productos", "/api/productos/**")
                     .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION", "VENDEDOR", "ALMACEN")

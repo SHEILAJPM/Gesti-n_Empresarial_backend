@@ -6,6 +6,7 @@ import desarrolloWeb.backend.dto.VentaResponse;
 import desarrolloWeb.backend.dto.VentasPorComprobante;
 import desarrolloWeb.backend.entity.Cliente;
 import desarrolloWeb.backend.entity.EstadoVenta;
+import desarrolloWeb.backend.entity.MovimientoStock;
 import desarrolloWeb.backend.entity.TipoComprobante;
 import desarrolloWeb.backend.entity.TipoDocumento;
 import desarrolloWeb.backend.entity.Venta;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -29,6 +31,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,6 +57,9 @@ class VentaServiceTest {
 
     @Mock
     private desarrolloWeb.backend.repository.ProductoRepository productoRepository;
+
+    @Mock
+    private InventarioService inventarioService;
 
     @InjectMocks
     private VentaService ventaService;
@@ -228,6 +235,32 @@ class VentaServiceTest {
     }
 
     @Test
+    @DisplayName("el stock se descuenta antes de enviar el comprobante a SUNAT")
+    void descuentaStockAntesDeEnviar() {
+        prepararFactura("F001-8");
+        VentaRequest pedido = new VentaRequest("20555666777", "F001-8", null, FECHA,
+                List.of(item("Mercadería", "NIU", "3", "100.00")), null, null, null);
+
+        ventaService.registrar(pedido);
+
+        InOrder orden = inOrder(inventarioService, facturacionService);
+        orden.verify(inventarioService).registrarVenta(any(Venta.class));
+        orden.verify(facturacionService).emitir(any(Venta.class));
+    }
+
+    @Test
+    @DisplayName("si falta stock la venta no se emite ni se envía a SUNAT")
+    void sinStockNoSeEnvia() {
+        prepararFactura("F001-9");
+        doThrow(new ReglaNegocioException("No hay stock suficiente")).when(inventarioService).registrarVenta(any(Venta.class));
+        VentaRequest pedido = new VentaRequest("20555666777", "F001-9", null, FECHA,
+                List.of(item("Mercadería", "NIU", "3", "100.00")), null, null, null);
+
+        assertThrows(ReglaNegocioException.class, () -> ventaService.registrar(pedido));
+        verify(facturacionService, never()).emitir(any(Venta.class));
+    }
+
+    @Test
     @DisplayName("anular cambia el estado a ANULADA sin llamar a save")
     void anularVentaEmitida() {
         Venta venta = venta(EstadoVenta.EMITIDA);
@@ -237,6 +270,8 @@ class VentaServiceTest {
 
         assertEquals(EstadoVenta.ANULADA, respuesta.estado());
         verify(ventaRepository, never()).save(any());
+        // La mercadería vuelve al almacén
+        verify(inventarioService).devolverVenta(venta, MovimientoStock.Motivo.ANULACION_VENTA, venta.getNumeroComprobante() + " anulada");
     }
 
     @Test

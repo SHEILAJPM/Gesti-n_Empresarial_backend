@@ -10,6 +10,7 @@ import desarrolloWeb.backend.util.UnidadMedida;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 
@@ -46,6 +47,12 @@ public class ProductoService {
         if (productoRepository.existsByCodigoIgnoreCaseAndIdNot(codigo, id)) {
             throw new ReglaNegocioException("Ya existe un producto con el código " + codigo);
         }
+        String unidad = UnidadMedida.validar(datos.unidad());
+        // Con stock, cambiar la unidad cambiaría el significado de lo que hay en el almacén
+        if (!unidad.equals(p.getUnidad()) && p.getStock().signum() != 0) {
+            throw new ReglaNegocioException("No se puede cambiar la unidad de " + p.getDescripcion() + " porque tiene stock ("
+                    + InventarioService.texto(p.getStock()) + " " + p.getUnidad() + "). Primero déjalo en cero con un ajuste en Inventario.");
+        }
         copiar(datos, p, codigo);
         return ProductoResponse.de(p);
     }
@@ -67,5 +74,11 @@ public class ProductoService {
         p.setDescripcion(datos.descripcion().trim());
         p.setUnidad(UnidadMedida.validar(datos.unidad()));
         p.setValorUnitario(datos.valorUnitario().setScale(2, RoundingMode.HALF_UP));
+        // Sin dato se conserva el mínimo actual; los servicios no lo usan
+        if (!p.manejaStock()) {
+            p.setStockMinimo(BigDecimal.ZERO);
+        } else if (datos.stockMinimo() != null) {
+            p.setStockMinimo(datos.stockMinimo().setScale(3, RoundingMode.HALF_UP));
+        }
     }
 }

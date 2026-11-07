@@ -8,6 +8,7 @@ import desarrolloWeb.backend.dto.VentaRequest;
 import desarrolloWeb.backend.entity.Cliente;
 import desarrolloWeb.backend.entity.EstadoSunat;
 import desarrolloWeb.backend.entity.EstadoVenta;
+import desarrolloWeb.backend.entity.MovimientoStock;
 import desarrolloWeb.backend.entity.Nota;
 import desarrolloWeb.backend.entity.TipoComprobante;
 import desarrolloWeb.backend.entity.TipoDocumento;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -39,9 +41,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -51,13 +55,14 @@ class NotaServiceTest {
     @Mock private NotaRepository notaRepository;
     @Mock private VentaRepository ventaRepository;
     @Mock private FacturacionService facturacionService;
+    @Mock private InventarioService inventarioService;
 
     private NotaService notaService;
     private Venta venta;
 
     @BeforeEach
     void preparar() {
-        notaService = new NotaService(notaRepository, ventaRepository, facturacionService);
+        notaService = new NotaService(notaRepository, ventaRepository, facturacionService, inventarioService);
 
         Cliente cliente = new Cliente("20555666777", "Comercial Lima S.A.C.", TipoDocumento.RUC);
         cliente.setId(2L);
@@ -75,6 +80,8 @@ class NotaServiceTest {
         venta.getSunat().setEstado(EstadoSunat.ACEPTADO);
         venta.agregarItem(item("LAP-01", "Laptop", "NIU", "2", "1500.00", "3000.00", "540.00"));
         venta.agregarItem(item(null, "Instalación", "ZZ", "1", "120.50", "120.50", "21.69"));
+        // La laptop salió del catálogo (producto 7); la instalación se escribió a mano
+        venta.getItems().get(0).setProductoId(7L);
 
         lenient().when(ventaRepository.findById(10L)).thenReturn(Optional.of(venta));
         lenient().when(notaRepository.totalPorVentaYTipo(eq(10L), any())).thenReturn(BigDecimal.ZERO);
@@ -163,6 +170,51 @@ class NotaServiceTest {
     void motivoQueNoExisteEnElCatalogo() {
         assertThrows(IllegalArgumentException.class,
                 () -> notaService.emitir(pedido(TipoNota.DEBITO, "09", null), "contabilidad1"));
+    }
+
+    @Test
+    void laAnulacionTotalRegresaLaMercaderiaAntesDeEnviarLaNota() {
+        notaService.emitir(pedido(TipoNota.CREDITO, "01", null), "contabilidad1");
+
+        InOrder orden = inOrder(inventarioService, facturacionService);
+        orden.verify(inventarioService).devolverVenta(venta, MovimientoStock.Motivo.ANULACION_VENTA, "FC01-1");
+        orden.verify(facturacionService).emitir(any(Nota.class));
+    }
+
+    @Test
+    void laDevolucionTotalRegistraUnaDevolucionDelCliente() {
+        notaService.emitir(pedido(TipoNota.CREDITO, "06", null), "contabilidad1");
+
+        verify(inventarioService).devolverVenta(venta, MovimientoStock.Motivo.DEVOLUCION_CLIENTE, "FC01-1");
+    }
+
+    @Test
+    void laDevolucionPorItemReconoceElProductoPorElCodigoDeLaLineaVendida() {
+        notaService.emitir(pedido(TipoNota.CREDITO, "07", List.of(
+                new VentaRequest.Item(null, "lap-01", "Laptop devuelta", "NIU", BigDecimal.ONE, new BigDecimal("1500.00")),
+                new VentaRequest.Item(null, null, "Instalación", "ZZ", BigDecimal.ONE, new BigDecimal("20.00")))),
+                "contabilidad1");
+
+        verify(inventarioService).devolverItems(venta, Map.of(7L, new BigDecimal("1.000")), "FC01-1");
+    }
+
+    @Test
+    void noSeDevuelveUnProductoQueNoEstaEnElComprobante() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> notaService.emitir(
+                pedido(TipoNota.CREDITO, "07", List.of(new VentaRequest.Item(99L, "MOU-01", "Mouse", "NIU",
+                        BigDecimal.ONE, new BigDecimal("30.00")))), "contabilidad1"));
+
+        assertTrue(error.getMessage().contains("solo se devuelve lo que se vendió"), error.getMessage());
+        verify(facturacionService, never()).emitir(any(Nota.class));
+    }
+
+    @Test
+    void unDescuentoNoMueveElStock() {
+        notaService.emitir(pedido(TipoNota.CREDITO, "04", List.of(
+                new VentaRequest.Item(null, null, "Descuento global", "ZZ", BigDecimal.ONE, new BigDecimal("100.00")))),
+                "contabilidad1");
+
+        verifyNoInteractions(inventarioService);
     }
 
     @Test

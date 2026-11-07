@@ -20,7 +20,8 @@ Frontend (Angular): [Gesti-n_Empresarial_Frontend](https://github.com/SHEILAJPM/
 | Portal del trabajador | Cada trabajador marca su entrada y salida desde el celular: debe estar dentro del radio de la sede y tomarse una foto con su ubicación, la fecha y la hora impresas. Ve sus marcaciones, sus fotos y sus boletas |
 | Planillas | Cálculo mensual de ONP, AFP y EsSalud (con base mínima de EsSalud y tope de la prima AFP) y retención de renta de 5ta categoría. RRHH la genera y Contabilidad la aprueba, lo que crea los pagos |
 | Ventas y clientes | Facturas (RUC) y boletas (DNI) con detalle por líneas (productos del catálogo o escritas a mano), IGV, pago al contado o al crédito en cuotas, observaciones, anulación y envío del comprobante electrónico |
-| Productos | Catálogo de productos y servicios (código, descripción, unidad SUNAT y precio sin IGV) para armar los comprobantes |
+| Productos | Catálogo de productos y servicios (código, descripción, unidad SUNAT, precio sin IGV y stock mínimo) para armar los comprobantes |
+| Inventario | Stock de cada producto y su kárdex (entradas, salidas y saldo). Las ventas descuentan solas y no se emiten si falta stock; la anulación y las notas de crédito por anulación o devolución lo regresan (nunca más de lo vendido). Almacén registra el inventario inicial, los ingresos por compra (vinculados a la factura del proveedor), las salidas (mermas, consumo interno, devoluciones al proveedor) y los conteos físicos, que solo registran la diferencia. Avisa el stock bajo y exporta el kárdex a CSV. Los servicios (ZZ, HUR) no manejan stock y las guías no lo mueven |
 | Notas de crédito y débito | Corrigen facturas y boletas aceptadas por SUNAT (series FC01/BC01 y FD01/BD01, motivos de los catálogos 09 y 10): anulación, devolución total o por ítem, descuentos, intereses. Una nota de crédito no puede superar el saldo del comprobante y el resumen tributario las descuenta o suma |
 | Cuentas por cobrar | Cobros de las ventas al crédito (medio de pago y n.° de operación) aplicados a la cuota más antigua; cuotas pagadas, parciales o vencidas con días de atraso; deuda por cliente. Las notas de crédito rebajan y las de débito suman |
 | Guías de remisión | Guía remitente (serie T001) para trasladar mercadería: motivo (catálogo 20), partida y llegada con ubigeo, peso y bultos, transporte propio (placa y conductor) o contratado (RUC del transportista). Se crea desde una venta o como traslado independiente |
@@ -93,13 +94,14 @@ Al arrancar por primera vez se crean estos usuarios, solo si no existen y solo s
 
 Las contraseñas no están en el código. En el perfil `local` (base H2 en tu computadora) se usan las de desarrollo: `Admin123`, `Rrhh123`, `Conta123` y `AdminArea123`.
 
-Los roles `TRABAJADOR`, `VENDEDOR` y `ALMACEN` son del personal: cada cuenta va vinculada a la ficha de un trabajador y usa el portal (`/api/mi/**`). Además, `VENDEDOR` emite boletas y facturas, registra clientes nuevos y emite guías; `ALMACEN` consulta ventas, clientes y productos y emite guías de remisión.
+Los roles `TRABAJADOR`, `VENDEDOR` y `ALMACEN` son del personal: cada cuenta va vinculada a la ficha de un trabajador y usa el portal (`/api/mi/**`). Además, `VENDEDOR` emite boletas y facturas, registra clientes nuevos y emite guías; `ALMACEN` lleva el inventario (ingresos, salidas y conteos), consulta ventas, clientes y productos y emite guías de remisión. Al iniciar sesión, Almacén entra directo a Inventario y el vendedor a Ventas.
 
 | Recurso | Consultar | Modificar |
 |---|---|---|
 | Personal, asistencia y documentos | ADMIN, RRHH (la lista de personal también CONTABILIDAD) | ADMIN, RRHH |
 | Clientes, ventas y productos | ADMIN, CONTABILIDAD, ADMINISTRACION, VENDEDOR | Emitir venta y registrar cliente: ADMIN, ADMINISTRACION, VENDEDOR · editar o borrar clientes y productos: ADMIN, ADMINISTRACION · anular venta: ADMIN, CONTABILIDAD |
 | Notas de crédito y débito | ADMIN, CONTABILIDAD, ADMINISTRACION | ADMIN, CONTABILIDAD, ADMINISTRACION |
+| Inventario y kárdex | ADMIN, ADMINISTRACION, CONTABILIDAD, ALMACEN, VENDEDOR (las compras para vincular ingresos: ADMIN, ADMINISTRACION, ALMACEN) | ADMIN, ADMINISTRACION, ALMACEN |
 | Guías de remisión | ADMIN, ADMINISTRACION, CONTABILIDAD, ALMACEN, VENDEDOR | ADMIN, ADMINISTRACION, ALMACEN, VENDEDOR |
 | Proveedores y compras | ADMIN, ADMINISTRACION, CONTABILIDAD | ADMIN, ADMINISTRACION, CONTABILIDAD |
 | Planillas | ADMIN, RRHH, CONTABILIDAD | Generar: ADMIN, RRHH · Aprobar: ADMIN, CONTABILIDAD |
@@ -127,6 +129,7 @@ Todos devuelven JSON. Los errores tienen siempre la misma forma: `{ timestamp, s
 | Clientes | `GET/POST /api/clientes`, `GET/PUT/DELETE /api/clientes/{id}`, `GET /api/clientes/buscar`, `GET /api/clientes/documento/{documento}` |
 | Notas | `GET/POST /api/notas` (`?ventaId=` filtra por venta), `GET /api/notas/{id}`, `GET /api/notas/motivos`, `GET /api/notas/{id}/sunat`, `POST /api/notas/{id}/sunat/reenviar` |
 | Cobranzas | `GET /api/cobranzas` (`?todas=true` incluye pagadas), `GET /api/cobranzas/resumen`, `GET /api/cobranzas/venta/{ventaId}`, `POST /api/cobranzas` |
+| Inventario | `GET /api/inventario`, `GET /api/inventario/{productoId}/kardex`, `GET /api/inventario/motivos`, `GET /api/inventario/compras`, `POST /api/inventario/movimientos` (`operacion`: `ENTRADA`, `SALIDA` o `AJUSTE` con el conteo físico) |
 | Guías | `GET/POST /api/guias` (`?ventaId=` filtra por venta), `GET /api/guias/{id}`, `GET /api/guias/motivos`, `GET /api/guias/{id}/sunat`, `POST /api/guias/{id}/sunat/reenviar` |
 | Productos | `GET/POST /api/productos`, `PUT /api/productos/{id}`, `PATCH /api/productos/{id}/estado`, `GET /api/productos/unidades` |
 | Ventas | `GET/POST /api/ventas`, `GET /api/ventas/{id}`, `PATCH /api/ventas/{id}/anular`, `GET /api/ventas/cliente/{id}`, `GET /api/ventas/periodo`, `GET /api/ventas/igv-periodo`, `GET /api/ventas/siguiente-numero`, `GET /api/ventas/reportes/por-comprobante`, `GET /api/ventas/reportes/ticket-promedio` |

@@ -16,6 +16,10 @@ public final class MotivoNota {
     /* Estos motivos revierten todo el comprobante: la nota copia todas sus líneas por el saldo pendiente */
     public static final Set<String> TOTALES = Set.of("01", "02", "06");
 
+    /* Notas de crédito que regresan mercadería al almacén (además de las totales) */
+    public static final String DEVOLUCION_TOTAL = "06";
+    public static final String DEVOLUCION_POR_ITEM = "07";
+
     static {
         Map<String, String> c = new LinkedHashMap<>();
         c.put("01", "Anulación de la operación");
@@ -53,5 +57,9 @@ public final class MotivoNota {
 
     public static boolean esTotal(TipoNota tipo, String codigo) {
         return tipo == TipoNota.CREDITO && TOTALES.contains(codigo);
+    }
+
+    public static boolean esDevolucionPorItem(TipoNota tipo, String codigo) {
+        return tipo == TipoNota.CREDITO && DEVOLUCION_POR_ITEM.equals(codigo);
     }
 }

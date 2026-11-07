@@ -1,12 +1,14 @@
 package desarrolloWeb.backend.config;
 
 import desarrolloWeb.backend.entity.Cliente;
+import desarrolloWeb.backend.entity.Producto;
 import desarrolloWeb.backend.entity.Proveedor;
 import desarrolloWeb.backend.entity.EstadoVenta;
 import desarrolloWeb.backend.entity.TipoComprobante;
 import desarrolloWeb.backend.entity.TipoDocumento;
 import desarrolloWeb.backend.entity.Venta;
 import desarrolloWeb.backend.repository.ClienteRepository;
+import desarrolloWeb.backend.repository.ProductoRepository;
 import desarrolloWeb.backend.repository.ProveedorRepository;
 import desarrolloWeb.backend.repository.VentaRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,6 +48,8 @@ class SecurityMatrizTest {
     private ProveedorRepository proveedorRepository;
     @Autowired
     private VentaRepository ventaRepository;
+    @Autowired
+    private ProductoRepository productoRepository;
 
     private Long ventaId;
 
@@ -262,5 +266,54 @@ class SecurityMatrizTest {
         mockMvc.perform(get("/api/pagos").with(vendedor())).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/tributario/resumen-mensual?anio=2026&mes=11").with(vendedor())).andExpect(status().isForbidden());
         mockMvc.perform(get("/api/personal").with(vendedor())).andExpect(status().isForbidden());
+    }
+
+    // ---------- Inventario: Almacén mueve el stock; quien vende solo lo consulta ----------
+
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor almacen() {
+        return org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .user("almacen.prueba").roles("ALMACEN");
+    }
+
+    private Long productoConStock() {
+        Producto p = new Producto();
+        p.setCodigo("TEC-900");
+        p.setDescripcion("Teclado USB");
+        p.setValorUnitario(new BigDecimal("45.00"));
+        return productoRepository.save(p).getId();
+    }
+
+    private static String ingreso(Long productoId) {
+        return "{\"operacion\":\"ENTRADA\",\"motivo\":\"SALDO_INICIAL\",\"lineas\":[{\"productoId\":"
+                + productoId + ",\"cantidad\":12}]}";
+    }
+
+    @Test
+    @DisplayName("Almacén · registra el inventario inicial y ve las compras para vincular ingresos → 201 / 200")
+    void almacenIngresaStock() throws Exception {
+        Long id = productoConStock();
+        mockMvc.perform(post("/api/inventario/movimientos").with(almacen()).contentType(MediaType.APPLICATION_JSON)
+                        .content(ingreso(id)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$[0].motivo").value("SALDO_INICIAL"))
+                .andExpect(jsonPath("$[0].saldo").value(12.0))
+                .andExpect(jsonPath("$[0].registradoPor").value("almacen.prueba"));
+        mockMvc.perform(get("/api/inventario/" + id + "/kardex").with(almacen())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/inventario/compras").with(almacen())).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Vendedor · consulta el stock pero no lo mueve ni ve las compras → 200 / 403")
+    void vendedorSoloConsultaStock() throws Exception {
+        mockMvc.perform(get("/api/inventario").with(vendedor())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/inventario/compras").with(vendedor())).andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/inventario/movimientos").with(vendedor()).contentType(MediaType.APPLICATION_JSON)
+                .content(ingreso(productoConStock()))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("RRHH · no ve el inventario → 403")
+    void rrhhSinInventario() throws Exception {
+        mockMvc.perform(get("/api/inventario").with(httpBasic("rrhh1", "Rrhh123"))).andExpect(status().isForbidden());
     }
 }

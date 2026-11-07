@@ -34,6 +34,23 @@ public class Producto {
     @Column(nullable = false)
     private boolean activo = true;
 
+    @Column(nullable = false, precision = 12, scale = 3)
+    private BigDecimal stock = BigDecimal.ZERO;
+
+    // Por debajo de este número se avisa «stock bajo»
+    @Column(name = "stock_minimo", nullable = false, precision = 12, scale = 3)
+    private BigDecimal stockMinimo = BigDecimal.ZERO;
+
+    /* Los servicios no se almacenan */
+    public boolean manejaStock() {
+        return !"ZZ".equals(unidad) && !"HUR".equals(unidad);
+    }
+
+    public BigDecimal getStock() { return stock; }
+    public void setStock(BigDecimal stock) { this.stock = stock; }
+    public BigDecimal getStockMinimo() { return stockMinimo; }
+    public void setStockMinimo(BigDecimal stockMinimo) { this.stockMinimo = stockMinimo; }
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getCodigo() { return codigo; }

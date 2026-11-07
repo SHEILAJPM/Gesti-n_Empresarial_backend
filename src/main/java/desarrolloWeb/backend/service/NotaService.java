@@ -6,6 +6,7 @@ import desarrolloWeb.backend.dto.VentaRequest;
 import desarrolloWeb.backend.dto.VentaResponse;
 import desarrolloWeb.backend.entity.EstadoSunat;
 import desarrolloWeb.backend.entity.EstadoVenta;
+import desarrolloWeb.backend.entity.MovimientoStock;
 import desarrolloWeb.backend.entity.Nota;
 import desarrolloWeb.backend.entity.NotaItem;
 import desarrolloWeb.backend.entity.TipoNota;
@@ -27,7 +28,12 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
 /* Notas de crédito y débito. Una nota modifica una factura o boleta ya aceptada por SUNAT:
    - crédito: resta (anulación, devolución, descuento). Nunca puede superar el saldo del comprobante.
@@ -38,14 +44,16 @@ public class NotaService {
     private final NotaRepository notaRepository;
     private final VentaRepository ventaRepository;
     private final FacturacionService facturacionService;
+    private final InventarioService inventarioService;
     private final CalculadoraTributaria calculadora = new CalculadoraTributaria();
     private final Clock reloj = Clock.system(PortalService.ZONA);
 
     public NotaService(NotaRepository notaRepository, VentaRepository ventaRepository,
-                       FacturacionService facturacionService) {
+                       FacturacionService facturacionService, InventarioService inventarioService) {
         this.notaRepository = notaRepository;
         this.ventaRepository = ventaRepository;
         this.facturacionService = facturacionService;
+        this.inventarioService = inventarioService;
     }
 
     @Transactional
@@ -107,8 +115,45 @@ public class NotaService {
         lineas.forEach(nota::agregarItem);
 
         Nota guardada = notaRepository.save(nota);
+        // La mercadería devuelta vuelve al almacén antes de enviar la nota: si algo no cuadra no se emite
+        if (MotivoNota.esTotal(tipo, motivo)) {
+            inventarioService.devolverVenta(venta, MotivoNota.DEVOLUCION_TOTAL.equals(motivo)
+                    ? MovimientoStock.Motivo.DEVOLUCION_CLIENTE : MovimientoStock.Motivo.ANULACION_VENTA, guardada.getNumero());
+        } else if (MotivoNota.esDevolucionPorItem(tipo, motivo)) {
+            inventarioService.devolverItems(venta, productosDevueltos(venta, datos.items()), guardada.getNumero());
+        }
         facturacionService.emitir(guardada);
         return toResponse(guardada, true);
+    }
+
+    /* Productos que regresan en una devolución por ítem: por su id o, si no viene, por el código de la línea vendida */
+    private static Map<Long, BigDecimal> productosDevueltos(Venta venta, List<VentaRequest.Item> items) {
+        Set<Long> vendidos = new HashSet<>();
+        Map<String, Long> porCodigo = new HashMap<>();
+        for (VentaItem i : venta.getItems()) {
+            if (i.getProductoId() != null) {
+                vendidos.add(i.getProductoId());
+                if (i.getCodigo() != null) {
+                    porCodigo.putIfAbsent(i.getCodigo().toUpperCase(), i.getProductoId());
+                }
+            }
+        }
+        Map<Long, BigDecimal> devueltos = new TreeMap<>();
+        for (VentaRequest.Item i : items) {
+            Long id = i.productoId();
+            if (id == null && i.codigo() != null && !i.codigo().isBlank()) {
+                id = porCodigo.get(i.codigo().trim().toUpperCase());
+            }
+            if (id == null) {
+                continue;
+            }
+            if (!vendidos.contains(id)) {
+                throw new IllegalArgumentException("La línea «" + i.descripcion().trim() + "» no es un producto de "
+                        + venta.getNumeroComprobante() + ": solo se devuelve lo que se vendió");
+            }
+            devueltos.merge(id, i.cantidad().setScale(3, RoundingMode.HALF_UP), BigDecimal::add);
+        }
+        return devueltos;
     }
 
     @Transactional(readOnly = true)

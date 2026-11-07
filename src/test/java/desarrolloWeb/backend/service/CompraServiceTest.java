@@ -7,6 +7,7 @@ import desarrolloWeb.backend.entity.Proveedor;
 import desarrolloWeb.backend.exception.RecursoNoEncontradoException;
 import desarrolloWeb.backend.exception.ReglaNegocioException;
 import desarrolloWeb.backend.repository.CompraRepository;
+import desarrolloWeb.backend.repository.MovimientoStockRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,8 @@ class CompraServiceTest {
 
     @Mock
     private CompraRepository compraRepository;
+    @Mock
+    private MovimientoStockRepository movimientoStockRepository;
     @Mock
     private ProveedorService proveedorService;
     @Mock
@@ -191,5 +194,31 @@ class CompraServiceTest {
         compra.setProveedor(proveedor);
         compra.setIgv(new BigDecimal(igv));
         return compra;
+    }
+
+    @Test
+    @DisplayName("una compra que ya ingresó mercadería al almacén no se elimina")
+    void noSeEliminaUnaCompraConIngresoAlAlmacen() {
+        Compra compra = new Compra();
+        compra.setNumeroComprobante("F001-77");
+        when(compraRepository.findById(5L)).thenReturn(Optional.of(compra));
+        when(movimientoStockRepository.existsByCompraId(5L)).thenReturn(true);
+
+        ReglaNegocioException error = assertThrows(ReglaNegocioException.class, () -> compraService.eliminar(5L));
+
+        assertTrue(error.getMessage().contains("ya ingresó mercadería"), error.getMessage());
+        verify(compraRepository, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("una compra sin movimientos de almacén se elimina")
+    void seEliminaUnaCompraSinIngreso() {
+        Compra compra = new Compra();
+        when(compraRepository.findById(6L)).thenReturn(Optional.of(compra));
+        when(movimientoStockRepository.existsByCompraId(6L)).thenReturn(false);
+
+        compraService.eliminar(6L);
+
+        verify(compraRepository).delete(compra);
     }
 }

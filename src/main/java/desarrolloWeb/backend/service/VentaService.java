@@ -7,6 +7,7 @@ import desarrolloWeb.backend.dto.VentasPorComprobante;
 import desarrolloWeb.backend.entity.Cliente;
 import desarrolloWeb.backend.entity.EstadoVenta;
 import desarrolloWeb.backend.entity.FormaPago;
+import desarrolloWeb.backend.entity.MovimientoStock;
 import desarrolloWeb.backend.entity.Producto;
 import desarrolloWeb.backend.entity.TipoComprobante;
 import desarrolloWeb.backend.entity.Venta;
@@ -40,6 +41,7 @@ public class VentaService {
     private final ConfiguracionTributariaService configuracionService;
     private final FacturacionService facturacionService;
     private final ProductoRepository productoRepository;
+    private final InventarioService inventarioService;
     private final CalculadoraTributaria calculadora = new CalculadoraTributaria();
     private final ValidadorDocumento validador = new ValidadorDocumento();
 
@@ -47,8 +49,10 @@ public class VentaService {
                         ClienteRepository clienteRepository,
                         ConfiguracionTributariaService configuracionService,
                         FacturacionService facturacionService,
-                        ProductoRepository productoRepository) {
+                        ProductoRepository productoRepository,
+                        InventarioService inventarioService) {
         this.productoRepository = productoRepository;
+        this.inventarioService = inventarioService;
         this.ventaRepository = ventaRepository;
         this.clienteRepository = clienteRepository;
         this.configuracionService = configuracionService;
@@ -105,6 +109,8 @@ public class VentaService {
         aplicarFormaPago(venta, tipo, request, total);
 
         Venta guardada = ventaRepository.save(venta);
+        // Descuenta el stock antes de enviar: si falta mercadería se revierte todo y SUNAT no recibe nada
+        inventarioService.registrarVenta(guardada);
         // Se envía como comprobante electrónico; si el proveedor falla, la venta queda registrada con estado ERROR
         facturacionService.emitir(guardada);
         return toResponse(guardada, true);
@@ -249,6 +255,8 @@ public class VentaService {
         }
 
         venta.setEstado(EstadoVenta.ANULADA);
+        // La mercadería vuelve al almacén (solo lo que no regresó antes con notas de crédito)
+        inventarioService.devolverVenta(venta, MovimientoStock.Motivo.ANULACION_VENTA, venta.getNumeroComprobante() + " anulada");
         facturacionService.anular(venta, "Anulación de la operación");
         return toResponse(venta);
     }

@@ -7,6 +7,7 @@ import desarrolloWeb.backend.entity.Proveedor;
 import desarrolloWeb.backend.exception.RecursoNoEncontradoException;
 import desarrolloWeb.backend.exception.ReglaNegocioException;
 import desarrolloWeb.backend.repository.CompraRepository;
+import desarrolloWeb.backend.repository.MovimientoStockRepository;
 import desarrolloWeb.backend.util.CalculadoraTributaria;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -25,16 +26,19 @@ public class CompraService {
     private final ProveedorService proveedorService;
     private final PagoService pagoService;
     private final ConfiguracionTributariaService configuracionService;
+    private final MovimientoStockRepository movimientoStockRepository;
     private final CalculadoraTributaria calculadora = new CalculadoraTributaria();
 
     public CompraService(CompraRepository compraRepository,
                          ProveedorService proveedorService,
                          PagoService pagoService,
-                         ConfiguracionTributariaService configuracionService) {
+                         ConfiguracionTributariaService configuracionService,
+                         MovimientoStockRepository movimientoStockRepository) {
         this.compraRepository = compraRepository;
         this.proveedorService = proveedorService;
         this.pagoService = pagoService;
         this.configuracionService = configuracionService;
+        this.movimientoStockRepository = movimientoStockRepository;
     }
 
     @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION', 'CONTABILIDAD')")
@@ -121,7 +125,13 @@ public class CompraService {
     @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION', 'CONTABILIDAD')")
     @Transactional
     public void eliminar(Long id) {
-        compraRepository.delete(obtenerEntidad(id));
+        Compra compra = obtenerEntidad(id);
+        // El kárdex la cita como origen del ingreso: borrarla dejaría ese stock sin respaldo
+        if (movimientoStockRepository.existsByCompraId(id)) {
+            throw new ReglaNegocioException("La compra " + compra.getNumeroComprobante()
+                    + " ya ingresó mercadería al almacén: no se puede eliminar. Si hubo un error, regístralo con una salida en Inventario.");
+        }
+        compraRepository.delete(compra);
     }
 
     @Transactional(readOnly = true)

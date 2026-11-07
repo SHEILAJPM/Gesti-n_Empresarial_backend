@@ -15,6 +15,10 @@ public interface CompraRepository extends JpaRepository<Compra, Long> {
     @Query("SELECT c FROM Compra c JOIN FETCH c.proveedor")
     List<Compra> listarConProveedor();
 
+    /* Compras desde una fecha, con su proveedor, para vincular ingresos al almacén */
+    @Query("SELECT c FROM Compra c JOIN FETCH c.proveedor WHERE c.fecha >= :desde ORDER BY c.fecha DESC, c.id DESC")
+    List<Compra> recientesConProveedor(@Param("desde") LocalDate desde);
+
     Optional<Compra> findByProveedorIdAndNumeroComprobante(Long proveedorId, String numeroComprobante);
 
     @Query("""
