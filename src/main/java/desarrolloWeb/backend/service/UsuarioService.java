@@ -18,6 +18,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -67,12 +70,58 @@ public class UsuarioService implements UserDetailsService {
             throw new ReglaNegocioException("Ya existe el usuario " + request.username());
         }
 
+        validarClave(request.password(), request.username());
         Trabajador trabajador = validarTrabajador(request.rol(), request.trabajadorId(), null);
 
         Usuario usuario = new Usuario(request.username(),
                 passwordEncoder.encode(request.password()), request.rol());
         usuario.setTrabajadorId(request.trabajadorId());
         return UsuarioResponse.de(usuarioRepository.save(usuario), trabajador == null ? null : trabajador.getNombres());
+    }
+
+    /* El propio usuario cambia su contraseña: debe confirmar la actual. Cierra sus otras sesiones. */
+    @Transactional
+    public Usuario cambiarMiClave(String username, String claveActual, String claveNueva) {
+        Usuario usuario = usuarioRepository.findByUsername(username)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No existe el usuario " + username));
+        if (claveActual == null || !passwordEncoder.matches(claveActual, usuario.getPassword())) {
+            throw new IllegalArgumentException("La contraseña actual no es correcta");
+        }
+        if (passwordEncoder.matches(claveNueva, usuario.getPassword())) {
+            throw new IllegalArgumentException("La nueva contraseña debe ser distinta de la actual");
+        }
+        asignarClave(usuario, claveNueva);
+        return usuario;
+    }
+
+    /* El administrador pone una contraseña nueva a otra cuenta (olvido, cuentas con claves débiles) */
+    @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
+    public UsuarioResponse restablecerClave(Long id, String claveNueva) {
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No existe el usuario con id " + id));
+        asignarClave(usuario, claveNueva);
+        return UsuarioResponse.de(usuario);
+    }
+
+    private void asignarClave(Usuario usuario, String claveNueva) {
+        validarClave(claveNueva, usuario.getUsername());
+        usuario.setPassword(passwordEncoder.encode(claveNueva));
+        // Al segundo, igual que la fecha de emisión del JWT: los tokens anteriores dejan de servir
+        usuario.setClaveCambiadaEn(LocalDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS));
+    }
+
+    /* Mínimo 8 caracteres, con letras y números, y distinta del nombre de usuario */
+    static void validarClave(String clave, String username) {
+        if (clave == null || clave.length() < 8) {
+            throw new IllegalArgumentException("La contraseña debe tener al menos 8 caracteres");
+        }
+        if (!clave.matches(".*\\p{L}.*") || !clave.matches(".*\\d.*")) {
+            throw new IllegalArgumentException("La contraseña debe combinar letras y números");
+        }
+        if (clave.equalsIgnoreCase(username)) {
+            throw new IllegalArgumentException("La contraseña no puede ser igual al nombre de usuario");
+        }
     }
 
     /* Vincula (o desvincula con null) la ficha del trabajador a una cuenta existente */

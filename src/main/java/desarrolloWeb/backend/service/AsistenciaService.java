@@ -7,12 +7,25 @@ import desarrolloWeb.backend.entity.TipoMarcacion;
 import desarrolloWeb.backend.entity.Trabajador;
 import desarrolloWeb.backend.dto.IntentoMarcacionResponse;
 import desarrolloWeb.backend.dto.TrabajadorResponse;
+import desarrolloWeb.backend.entity.FotoAsistencia;
+import desarrolloWeb.backend.exception.RecursoNoEncontradoException;
+import desarrolloWeb.backend.repository.FotoAsistenciaRepository;
 import desarrolloWeb.backend.repository.IntentoMarcacionRepository;
+import desarrolloWeb.backend.repository.TrabajadorRepository;
+import desarrolloWeb.backend.dto.ResumenAsistenciaResponse;
+import desarrolloWeb.backend.entity.Sede;
+import desarrolloWeb.backend.util.CalculadoraAsistencia;
+import desarrolloWeb.backend.util.CalculadoraPlanilla;
 import desarrolloWeb.backend.repository.MarcacionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.YearMonth;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,14 +38,24 @@ public class AsistenciaService {
     private final MarcacionRepository marcacionRepository;
 
     private final IntentoMarcacionRepository intentoRepository;
+    private final FotoAsistenciaRepository fotoRepository;
+    private final TrabajadorRepository trabajadorRepository;
+    private final SedeService sedeService;
+    private final Clock reloj = Clock.system(PortalService.ZONA);
 
     public AsistenciaService(
             PersonalService personalService,
             MarcacionRepository marcacionRepository,
-            IntentoMarcacionRepository intentoRepository) {
+            IntentoMarcacionRepository intentoRepository,
+            FotoAsistenciaRepository fotoRepository,
+            TrabajadorRepository trabajadorRepository,
+            SedeService sedeService) {
+        this.trabajadorRepository = trabajadorRepository;
+        this.sedeService = sedeService;
         this.personalService = personalService;
         this.marcacionRepository = marcacionRepository;
         this.intentoRepository = intentoRepository;
+        this.fotoRepository = fotoRepository;
     }
 
     /* Marcaciones rechazadas en el portal (fuera del radio o GPS impreciso), las más recientes primero */
@@ -44,7 +67,7 @@ public class AsistenciaService {
                 .map(i -> new IntentoMarcacionResponse(i.getId(), i.getTrabajadorId(),
                         nombres.getOrDefault(i.getTrabajadorId(), "Trabajador #" + i.getTrabajadorId()), i.getFechaHora(),
                         i.getTipo(), i.getDistanciaMetros(), i.getPrecisionMetros(), i.getLatitud(), i.getLongitud(),
-                        i.getMotivo()))
+                        i.getMotivo(), i.getFotoId()))
                 .toList();
     }
 
@@ -73,6 +96,49 @@ public class AsistenciaService {
         marcacion.setOrigen("RRHH");
 
         return marcacionRepository.save(marcacion);
+    }
+
+    /* Foto de una marcación o de un intento rechazado, para que RRHH la revise */
+    @Transactional(readOnly = true)
+    public FotoAsistencia foto(Long fotoId) {
+        return fotoRepository.findById(fotoId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("No existe la foto " + fotoId));
+    }
+
+    /* Resumen del mes por trabajador: días, horas, tardanzas y faltas según el horario de la sede */
+    @Transactional(readOnly = true)
+    public ResumenAsistenciaResponse resumenMensual(int anio, int mes) {
+        if (mes < 1 || mes > 12) {
+            throw new IllegalArgumentException("El mes debe estar entre 1 y 12");
+        }
+        YearMonth periodo = YearMonth.of(anio, mes);
+        LocalDate hoy = LocalDate.now(reloj);
+        if (periodo.isAfter(YearMonth.from(hoy))) {
+            throw new IllegalArgumentException("No hay asistencia de un mes futuro");
+        }
+        Sede sede = sedeService.activa().orElse(null);
+        LocalTime horaEntrada = sede != null ? sede.getHoraEntrada() : LocalTime.of(8, 0);
+        int tolerancia = sede != null ? sede.getToleranciaMinutos() : 10;
+
+        Map<Long, List<Marcacion>> porTrabajador = marcacionRepository
+                .findByFechaHoraBetween(periodo.atDay(1).atStartOfDay(), periodo.atEndOfMonth().atTime(LocalTime.MAX))
+                .stream().collect(Collectors.groupingBy(Marcacion::getTrabajadorId));
+
+        List<ResumenAsistenciaResponse.Fila> filas = trabajadorRepository.findAll().stream()
+                .filter(t -> porTrabajador.containsKey(t.getId())
+                        || CalculadoraPlanilla.diasLaborados(t.getFechaIngreso(), t.getFechaCese(), periodo) > 0
+                        || (t.getFechaIngreso() == null && t.estaActivo()))
+                .map(t -> {
+                    CalculadoraAsistencia.Resultado r = CalculadoraAsistencia.calcular(
+                            porTrabajador.getOrDefault(t.getId(), List.of()), periodo, t.getFechaIngreso(),
+                            t.getFechaCese(), hoy, horaEntrada, tolerancia);
+                    return new ResumenAsistenciaResponse.Fila(t.getId(), t.getNombres(), t.getDocumentoIdentidad(),
+                            t.getArea(), r.diasLaborables(), r.diasAsistidos(), r.faltas(), r.tardanzas(),
+                            r.minutosTardanza(), r.horasTrabajadas(), r.diasSinSalida());
+                })
+                .sorted(Comparator.comparing(ResumenAsistenciaResponse.Fila::nombres))
+                .toList();
+        return new ResumenAsistenciaResponse(anio, mes, horaEntrada, tolerancia, filas);
     }
 
     public List<Marcacion> listarTodas() {

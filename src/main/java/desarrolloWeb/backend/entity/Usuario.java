@@ -1,5 +1,6 @@
 package desarrolloWeb.backend.entity;
 
+import java.time.LocalDateTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -34,6 +35,10 @@ public class Usuario {
     // Ficha del trabajador a la que pertenece esta cuenta (obligatoria para TRABAJADOR, VENDEDOR y ALMACEN)
     @Column(name = "trabajador_id", unique = true)
     private Long trabajadorId;
+
+    // Último cambio de contraseña (UTC, al segundo): invalida los tokens emitidos antes
+    @Column(name = "clave_cambiada_en")
+    private LocalDateTime claveCambiadaEn;
 
     public Usuario() {
     }
@@ -82,5 +87,13 @@ public class Usuario {
 
     public void setTrabajadorId(Long trabajadorId) {
         this.trabajadorId = trabajadorId;
+    }
+
+    public LocalDateTime getClaveCambiadaEn() {
+        return claveCambiadaEn;
+    }
+
+    public void setClaveCambiadaEn(LocalDateTime claveCambiadaEn) {
+        this.claveCambiadaEn = claveCambiadaEn;
     }
 }

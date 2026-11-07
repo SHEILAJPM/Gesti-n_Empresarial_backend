@@ -42,6 +42,10 @@ public class Marcacion {
     public Marcacion() {
     }
 
+    // Foto tomada al marcar desde el portal (las de RRHH no tienen)
+    @Column(name = "foto_id")
+    private Long fotoId;
+
     public Long getId() {
         return id;
     }
@@ -112,5 +116,13 @@ public class Marcacion {
 
     public void setDistanciaMetros(BigDecimal distanciaMetros) {
         this.distanciaMetros = distanciaMetros;
+    }
+
+    public Long getFotoId() {
+        return fotoId;
+    }
+
+    public void setFotoId(Long fotoId) {
+        this.fotoId = fotoId;
     }
 }

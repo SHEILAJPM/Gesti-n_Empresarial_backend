@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -69,6 +71,20 @@ public class GlobalExceptionHandler {
                                                                   HttpServletRequest req) {
         return responder(HttpStatus.BAD_REQUEST,
                 "Falta el parámetro obligatorio '" + ex.getParameterName() + "'", req);
+    }
+
+    @ExceptionHandler(DemasiadosIntentosException.class)
+    public ResponseEntity<ErrorResponse> manejarDemasiadosIntentos(DemasiadosIntentosException ex, HttpServletRequest req) {
+        return responder(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), req);
+    }
+
+    /* Login con usuario o contraseña incorrectos, o cuenta desactivada */
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ErrorResponse> manejarAutenticacion(AuthenticationException ex, HttpServletRequest req) {
+        String mensaje = ex instanceof DisabledException
+                ? "Tu cuenta está desactivada. Habla con el administrador."
+                : "Usuario o contraseña incorrectos";
+        return responder(HttpStatus.UNAUTHORIZED, mensaje, req);
     }
 
     @ExceptionHandler(AccessDeniedException.class)

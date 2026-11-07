@@ -77,7 +77,7 @@ public class CompraService {
 
     @Transactional(readOnly = true)
     public List<CompraResponse> listarTodas() {
-        return mapear(compraRepository.findAll());
+        return mapear(compraRepository.listarConProveedor());
     }
 
     @Transactional(readOnly = true)

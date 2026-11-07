@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,6 +42,11 @@ public class PortalController {
     @GetMapping("/asistencia")
     public ResponseEntity<List<Marcacion>> misMarcaciones(Authentication autenticacion) {
         return ResponseEntity.ok(portalService.misMarcaciones(autenticacion.getName()));
+    }
+
+    @GetMapping("/asistencia/{marcacionId}/foto")
+    public ResponseEntity<byte[]> miFoto(@PathVariable Long marcacionId, Authentication autenticacion) {
+        return FotoRespuesta.de(portalService.miFoto(autenticacion.getName(), marcacionId));
     }
 
     @GetMapping("/boletas")

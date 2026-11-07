@@ -29,7 +29,7 @@ public class ClienteService {
         this.ventaRepository = ventaRepository;
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION', 'VENDEDOR')")
     @Transactional
     public ClienteResponse registrar(ClienteRequest request) {
         TipoDocumento tipoDocumento = validador.tipoDocumentoDe(request.documento());

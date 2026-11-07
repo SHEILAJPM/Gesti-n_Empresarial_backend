@@ -140,4 +140,42 @@ class FacturacionElectronicaTest {
 
         assertEquals(8, apisunat.siguienteCorrelativo("01", "F001", 3));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void documentoUblLlevaCadaLineaYLasCuotasDelCredito() {
+        DocumentoElectronico d = new DocumentoElectronico("01", "F001", 20, LocalDate.of(2026, 11, 6), "6",
+                "20555666777", "Comercial Lima S.A.C.", "Venta", new BigDecimal("3120.50"), new BigDecimal("561.69"),
+                new BigDecimal("3682.19"), new BigDecimal("0.18"),
+                List.of(new DocumentoElectronico.Linea("LAP-01", "Laptop", "NIU", new BigDecimal("2.000"),
+                                new BigDecimal("1500.00"), new BigDecimal("3000.00"), new BigDecimal("540.00")),
+                        new DocumentoElectronico.Linea(null, "Instalación", "ZZ", new BigDecimal("1.000"),
+                                new BigDecimal("120.50"), new BigDecimal("120.50"), new BigDecimal("21.69"))),
+                "Credito",
+                List.of(new DocumentoElectronico.CuotaPago(1, LocalDate.of(2026, 12, 6), new BigDecimal("1841.10")),
+                        new DocumentoElectronico.CuotaPago(2, LocalDate.of(2027, 1, 6), new BigDecimal("1841.09"))),
+                "Entrega en tienda", null);
+
+        Map<String, Object> ubl = DocumentoUbl.construir(d, PROPIEDADES.emisor());
+
+        List<Map<String, Object>> lineas = (List<Map<String, Object>>) ubl.get("cac:InvoiceLine");
+        assertEquals(2, lineas.size());
+        Map<String, Object> cantidad = (Map<String, Object>) lineas.get(0).get("cbc:InvoicedQuantity");
+        assertEquals("2", cantidad.get("_text"));
+        assertEquals(Map.of("unitCode", "NIU"), cantidad.get("_attributes"));
+        Map<String, Object> item = (Map<String, Object>) lineas.get(0).get("cac:Item");
+        assertEquals(Map.of("_text", "Laptop"), item.get("cbc:Description"));
+        assertTrue(item.containsKey("cac:SellersItemIdentification"));
+        // Precio unitario con IGV: (3000 + 540) / 2
+        Map<String, Object> precio = (Map<String, Object>) ((Map<String, Object>) ((Map<String, Object>) lineas.get(0)
+                .get("cac:PricingReference")).get("cac:AlternativeConditionPrice")).get("cbc:PriceAmount");
+        assertEquals("1770.00", precio.get("_text"));
+
+        List<Map<String, Object>> pagos = (List<Map<String, Object>>) ubl.get("cac:PaymentTerms");
+        assertEquals(3, pagos.size());
+        assertEquals(Map.of("_text", "Credito"), pagos.get(0).get("cbc:PaymentMeansID"));
+        assertEquals(Map.of("_text", "Cuota002"), pagos.get(2).get("cbc:PaymentMeansID"));
+        assertEquals(Map.of("_text", "2027-01-06"), pagos.get(2).get("cbc:PaymentDueDate"));
+        assertEquals(2, ((List<?>) ubl.get("cbc:Note")).size());
+    }
 }

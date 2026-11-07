@@ -8,6 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalTime;
 import java.util.Optional;
 
 /* La sede activa es el punto desde el que se mide la distancia al marcar asistencia */
@@ -40,6 +41,14 @@ public class SedeService {
         sede.setLongitud(datos.longitud());
         sede.setRadioMetros(datos.radioMetros());
         sede.setPrecisionMaxima(datos.precisionMaxima());
+        LocalTime entrada = datos.horaEntrada() != null ? datos.horaEntrada() : LocalTime.of(8, 0);
+        LocalTime salida = datos.horaSalida() != null ? datos.horaSalida() : LocalTime.of(17, 0);
+        if (!salida.isAfter(entrada)) {
+            throw new IllegalArgumentException("La hora de salida debe ser posterior a la de entrada");
+        }
+        sede.setHoraEntrada(entrada);
+        sede.setHoraSalida(salida);
+        sede.setToleranciaMinutos(datos.toleranciaMinutos() != null ? datos.toleranciaMinutos() : 10);
         sede.setActiva(true);
         return SedeResponse.de(sedeRepository.save(sede));
     }

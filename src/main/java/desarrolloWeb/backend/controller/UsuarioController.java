@@ -1,5 +1,6 @@
 package desarrolloWeb.backend.controller;
 
+import desarrolloWeb.backend.dto.CambiarClaveRequest;
 import desarrolloWeb.backend.dto.UsuarioRequest;
 import desarrolloWeb.backend.dto.UsuarioResponse;
 import desarrolloWeb.backend.dto.VincularTrabajadorRequest;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,6 +46,13 @@ public class UsuarioController {
                                                          @RequestParam boolean activo,
                                                          Authentication autenticacion) {
         return ResponseEntity.ok(usuarioService.cambiarEstado(id, activo, autenticacion.getName()));
+    }
+
+    /* El administrador pone una contraseña nueva a otra cuenta */
+    @PutMapping("/{id}/clave")
+    public ResponseEntity<UsuarioResponse> restablecerClave(@PathVariable Long id,
+                                                            @Valid @RequestBody CambiarClaveRequest datos) {
+        return ResponseEntity.ok(usuarioService.restablecerClave(id, datos.claveNueva()));
     }
 
     @PatchMapping("/{id}/trabajador")

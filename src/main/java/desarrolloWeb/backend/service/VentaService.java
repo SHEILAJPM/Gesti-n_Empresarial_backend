@@ -6,8 +6,15 @@ import desarrolloWeb.backend.dto.VentaResponse;
 import desarrolloWeb.backend.dto.VentasPorComprobante;
 import desarrolloWeb.backend.entity.Cliente;
 import desarrolloWeb.backend.entity.EstadoVenta;
+import desarrolloWeb.backend.entity.FormaPago;
+import desarrolloWeb.backend.entity.Producto;
 import desarrolloWeb.backend.entity.TipoComprobante;
 import desarrolloWeb.backend.entity.Venta;
+import desarrolloWeb.backend.entity.VentaCuota;
+import desarrolloWeb.backend.entity.VentaItem;
+import desarrolloWeb.backend.repository.ProductoRepository;
+import desarrolloWeb.backend.util.UnidadMedida;
+import desarrolloWeb.backend.util.MontoEnLetras;
 import desarrolloWeb.backend.exception.DocumentoInvalidoException;
 import desarrolloWeb.backend.exception.RecursoNoEncontradoException;
 import desarrolloWeb.backend.exception.ReglaNegocioException;
@@ -32,20 +39,23 @@ public class VentaService {
     private final ClienteRepository clienteRepository;
     private final ConfiguracionTributariaService configuracionService;
     private final FacturacionService facturacionService;
+    private final ProductoRepository productoRepository;
     private final CalculadoraTributaria calculadora = new CalculadoraTributaria();
     private final ValidadorDocumento validador = new ValidadorDocumento();
 
     public VentaService(VentaRepository ventaRepository,
                         ClienteRepository clienteRepository,
                         ConfiguracionTributariaService configuracionService,
-                        FacturacionService facturacionService) {
+                        FacturacionService facturacionService,
+                        ProductoRepository productoRepository) {
+        this.productoRepository = productoRepository;
         this.ventaRepository = ventaRepository;
         this.clienteRepository = clienteRepository;
         this.configuracionService = configuracionService;
         this.facturacionService = facturacionService;
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION', 'VENDEDOR')")
     @Transactional
     public VentaResponse registrar(VentaRequest request) {
         Cliente cliente = clienteRepository.findByDocumento(request.documentoCliente())
@@ -59,11 +69,25 @@ public class VentaService {
         }
 
         if (ventaRepository.existsByNumeroComprobante(request.numeroComprobante())) {
-            throw new ReglaNegocioException("Ya existe una venta con el comprobante " + request.numeroComprobante());
+            // Otra persona registró ese número mientras se llenaba el formulario: se sugiere el siguiente libre
+            throw new ReglaNegocioException("Ya existe una venta con el comprobante " + request.numeroComprobante()
+                    + ". El siguiente número libre es " + siguienteNumero(tipo));
         }
 
         BigDecimal tasa = configuracionService.obtenerTasaVigente(ConfiguracionTributariaService.CODIGO_IGV);
-        BigDecimal base = request.montoSinIgv().setScale(2, RoundingMode.HALF_UP);
+        List<VentaItem> lineas = construirLineas(request.items(), tasa);
+        BigDecimal base;
+        if (!lineas.isEmpty()) {
+            base = lineas.stream().map(VentaItem::getValorVenta).reduce(BigDecimal.ZERO, BigDecimal::add);
+        } else if (request.montoSinIgv() != null) {
+            base = request.montoSinIgv().setScale(2, RoundingMode.HALF_UP);
+        } else {
+            throw new IllegalArgumentException("Agrega al menos un producto o servicio al comprobante");
+        }
+        if (base.signum() <= 0) {
+            throw new IllegalArgumentException("El total del comprobante debe ser mayor a cero");
+        }
+        BigDecimal total = calculadora.calcularTotal(base, tasa);
 
         Venta venta = new Venta();
         venta.setCliente(cliente);
@@ -72,14 +96,85 @@ public class VentaService {
         venta.setFecha(request.fecha());
         venta.setMontoSinIgv(base);
         venta.setIgv(calculadora.calcularIgv(base, tasa));
-        venta.setMontoTotal(calculadora.calcularTotal(base, tasa));
+        venta.setMontoTotal(total);
         venta.setTasaAplicada(tasa);
         venta.setEstado(EstadoVenta.EMITIDA);
+        venta.setObservaciones(request.observaciones() == null || request.observaciones().isBlank()
+                ? null : request.observaciones().trim());
+        lineas.forEach(venta::agregarItem);
+        aplicarFormaPago(venta, tipo, request, total);
 
         Venta guardada = ventaRepository.save(venta);
         // Se envía como comprobante electrónico; si el proveedor falla, la venta queda registrada con estado ERROR
         facturacionService.emitir(guardada);
-        return toResponse(guardada);
+        return toResponse(guardada, true);
+    }
+
+    /* Líneas del comprobante: valor de venta = cantidad × precio sin IGV; el IGV de cada línea se redondea aparte */
+    private List<VentaItem> construirLineas(List<VentaRequest.Item> items, BigDecimal tasa) {
+        if (items == null) {
+            return List.of();
+        }
+        List<VentaItem> lineas = new ArrayList<>();
+        for (VentaRequest.Item i : items) {
+            VentaItem linea = new VentaItem();
+            String codigo = i.codigo() == null || i.codigo().isBlank() ? null : i.codigo().trim().toUpperCase();
+            if (i.productoId() != null) {
+                Producto producto = productoRepository.findById(i.productoId())
+                        .orElseThrow(() -> new IllegalArgumentException("No existe el producto " + i.productoId()));
+                if (!producto.isActivo()) {
+                    throw new IllegalArgumentException("El producto " + producto.getCodigo() + " está desactivado");
+                }
+                linea.setProductoId(producto.getId());
+                if (codigo == null) {
+                    codigo = producto.getCodigo();
+                }
+            }
+            BigDecimal cantidad = i.cantidad().setScale(3, RoundingMode.HALF_UP);
+            BigDecimal valorUnitario = i.valorUnitario().setScale(2, RoundingMode.HALF_UP);
+            BigDecimal valorVenta = cantidad.multiply(valorUnitario).setScale(2, RoundingMode.HALF_UP);
+            linea.setCodigo(codigo);
+            linea.setDescripcion(i.descripcion().trim());
+            linea.setUnidad(UnidadMedida.validar(i.unidad()));
+            linea.setCantidad(cantidad);
+            linea.setValorUnitario(valorUnitario);
+            linea.setValorVenta(valorVenta);
+            linea.setIgv(calculadora.calcularIgv(valorVenta, tasa));
+            lineas.add(linea);
+        }
+        return lineas;
+    }
+
+    /* Al crédito: solo con factura, con cuotas posteriores a la emisión que sumen el total (exigencia de SUNAT) */
+    private static void aplicarFormaPago(Venta venta, TipoComprobante tipo, VentaRequest request, BigDecimal total) {
+        FormaPago forma = request.formaPago() == null ? FormaPago.CONTADO : request.formaPago();
+        venta.setFormaPago(forma);
+        if (forma == FormaPago.CONTADO) {
+            return;
+        }
+        if (tipo != TipoComprobante.FACTURA) {
+            throw new IllegalArgumentException("Las ventas al crédito se emiten con factura (cliente con RUC)");
+        }
+        List<VentaRequest.Cuota> cuotas = request.cuotas() == null ? List.of() : request.cuotas();
+        if (cuotas.isEmpty()) {
+            throw new IllegalArgumentException("Una venta al crédito necesita al menos una cuota");
+        }
+        BigDecimal suma = BigDecimal.ZERO;
+        LocalDate anterior = request.fecha();
+        for (VentaRequest.Cuota c : cuotas) {
+            if (!c.fechaVencimiento().isAfter(anterior)) {
+                throw new IllegalArgumentException("Cada cuota debe vencer después de la fecha de emisión y de la cuota anterior");
+            }
+            anterior = c.fechaVencimiento();
+            VentaCuota cuota = new VentaCuota();
+            cuota.setFechaVencimiento(c.fechaVencimiento());
+            cuota.setMonto(c.monto().setScale(2, RoundingMode.HALF_UP));
+            venta.agregarCuota(cuota);
+            suma = suma.add(cuota.getMonto());
+        }
+        if (suma.compareTo(total) != 0) {
+            throw new IllegalArgumentException("Las cuotas suman S/ " + suma + " y deben sumar el total de S/ " + total);
+        }
     }
 
     /* Consulta a SUNAT/APISUNAT el estado actual del comprobante */
@@ -91,7 +186,7 @@ public class VentaService {
     }
 
     /* Reintenta el envío de un comprobante que falló o fue rechazado */
-    @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ADMINISTRACION', 'VENDEDOR')")
     @Transactional
     public VentaResponse reenviarSunat(Long id) {
         Venta venta = obtenerEntidad(id);
@@ -106,23 +201,22 @@ public class VentaService {
     @Transactional(readOnly = true)
     public String siguienteNumero(TipoComprobante tipo) {
         String serie = tipo.getPrefijo() + "001";
-        int local = ventaRepository.findAll().stream()
-                .map(Venta::getNumeroComprobante)
-                .filter(n -> n.matches(serie + "-\\d{1,8}"))
-                .mapToInt(n -> Integer.parseInt(n.substring(serie.length() + 1)))
-                .max().orElse(0) + 1;
+        // El máximo se calcula en la base: no hace falta traer todas las ventas
+        Long maximo = ventaRepository.maximoCorrelativo(serie + "-", serie.length() + 2);
+        int local = (maximo == null ? 0 : Math.toIntExact(maximo)) + 1;
         String codigoTipo = tipo == TipoComprobante.FACTURA ? "01" : "03";
         return serie + "-" + facturacionService.siguienteCorrelativo(codigoTipo, serie, local);
     }
 
     @Transactional(readOnly = true)
     public List<VentaResponse> listarTodas() {
-        return mapear(ventaRepository.findAll());
+        return mapear(ventaRepository.listarConCliente());
     }
 
+    /* Con el detalle completo: líneas y cuotas */
     @Transactional(readOnly = true)
     public VentaResponse buscarPorId(Long id) {
-        return toResponse(obtenerEntidad(id));
+        return toResponse(obtenerEntidad(id), true);
     }
 
     @Transactional(readOnly = true)
@@ -200,6 +294,18 @@ public class VentaService {
     }
 
     private VentaResponse toResponse(Venta venta) {
+        return toResponse(venta, false);
+    }
+
+    /* completo = con líneas y cuotas; el listado no las carga para no hacer una consulta por venta */
+    private VentaResponse toResponse(Venta venta, boolean completo) {
+        List<VentaResponse.Item> items = !completo ? List.of() : venta.getItems().stream()
+                .map(i -> new VentaResponse.Item(i.getOrden(), i.getProductoId(), i.getCodigo(), i.getDescripcion(),
+                        i.getUnidad(), i.getCantidad(), i.getValorUnitario(), i.getValorVenta(), i.getIgv()))
+                .toList();
+        List<VentaResponse.Cuota> cuotas = !completo ? List.of() : venta.getCuotas().stream()
+                .map(c -> new VentaResponse.Cuota(c.getNumero(), c.getFechaVencimiento(), c.getMonto()))
+                .toList();
         return new VentaResponse(
                 venta.getId(),
                 venta.getCliente().getId(),
@@ -213,6 +319,12 @@ public class VentaService {
                 venta.getMontoTotal(),
                 venta.getTasaAplicada(),
                 venta.getEstado(),
-                facturacionService.respuesta(venta));
+                facturacionService.respuesta(venta),
+                venta.getFormaPago(),
+                venta.getObservaciones(),
+                items.size(),
+                items,
+                cuotas,
+                completo ? MontoEnLetras.convertir(venta.getMontoTotal()) : null);
     }
 }

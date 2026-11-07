@@ -46,6 +46,10 @@ public class IntentoMarcacion {
     @Column(nullable = false, length = 200)
     private String motivo;
 
+    // Foto tomada al marcar desde el portal (las de RRHH no tienen)
+    @Column(name = "foto_id")
+    private Long fotoId;
+
     public Long getId() {
         return id;
     }
@@ -112,5 +116,13 @@ public class IntentoMarcacion {
 
     public void setMotivo(String motivo) {
         this.motivo = motivo;
+    }
+
+    public Long getFotoId() {
+        return fotoId;
+    }
+
+    public void setFotoId(Long fotoId) {
+        this.fotoId = fotoId;
     }
 }

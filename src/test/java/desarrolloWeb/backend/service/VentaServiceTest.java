@@ -51,8 +51,111 @@ class VentaServiceTest {
     @Mock
     private FacturacionService facturacionService;
 
+    @Mock
+    private desarrolloWeb.backend.repository.ProductoRepository productoRepository;
+
     @InjectMocks
     private VentaService ventaService;
+
+    private void prepararFactura(String numero) {
+        when(clienteRepository.findByDocumento("20555666777")).thenReturn(Optional.of(clienteRuc));
+        when(ventaRepository.existsByNumeroComprobante(numero)).thenReturn(false);
+        when(configuracionService.obtenerTasaVigente("IGV")).thenReturn(new BigDecimal("0.1800"));
+        org.mockito.Mockito.lenient().when(ventaRepository.save(any(Venta.class))).thenAnswer(inv -> inv.getArgument(0));
+    }
+
+    private static VentaRequest.Item item(String descripcion, String unidad, String cantidad, String precio) {
+        return new VentaRequest.Item(null, null, descripcion, unidad, new BigDecimal(cantidad), new BigDecimal(precio));
+    }
+
+    @Test
+    @DisplayName("una factura con varias líneas suma cada cantidad × precio y calcula el IGV")
+    void facturaConDetalle() {
+        prepararFactura("F001-5");
+        VentaRequest pedido = new VentaRequest("20555666777", "F001-5", null, FECHA,
+                List.of(item("Laptop Lenovo 14\"", "NIU", "2", "1500.00"), item("Instalación de software", "ZZ", "1", "120.50")),
+                null, null, "Entrega en tienda");
+
+        VentaResponse venta = ventaService.registrar(pedido);
+
+        assertEquals(new BigDecimal("3120.50"), venta.montoSinIgv());
+        assertEquals(new BigDecimal("561.69"), venta.igv());
+        assertEquals(new BigDecimal("3682.19"), venta.montoTotal());
+        assertEquals(2, venta.items().size());
+        assertEquals(new BigDecimal("3000.00"), venta.items().get(0).valorVenta());
+        assertEquals(new BigDecimal("540.00"), venta.items().get(0).igv());
+        assertEquals("ZZ", venta.items().get(1).unidad());
+        assertEquals("Entrega en tienda", venta.observaciones());
+        assertEquals(desarrolloWeb.backend.entity.FormaPago.CONTADO, venta.formaPago());
+    }
+
+    @Test
+    @DisplayName("al crédito las cuotas deben vencer después de la emisión y sumar el total")
+    void facturaAlCredito() {
+        prepararFactura("F001-6");
+        List<VentaRequest.Item> items = List.of(item("Mercadería", "NIU", "10", "100.00")); // total 1180.00
+
+        VentaRequest malSumado = new VentaRequest("20555666777", "F001-6", null, FECHA, items,
+                desarrolloWeb.backend.entity.FormaPago.CREDITO,
+                List.of(new VentaRequest.Cuota(FECHA.plusDays(30), new BigDecimal("500.00"))), null);
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ventaService.registrar(malSumado));
+        assertTrue(error.getMessage().contains("deben sumar el total de S/ 1180.00"), error.getMessage());
+
+        VentaRequest bien = new VentaRequest("20555666777", "F001-6", null, FECHA, items,
+                desarrolloWeb.backend.entity.FormaPago.CREDITO,
+                List.of(new VentaRequest.Cuota(FECHA.plusDays(30), new BigDecimal("590.00")),
+                        new VentaRequest.Cuota(FECHA.plusDays(60), new BigDecimal("590.00"))), null);
+        VentaResponse venta = ventaService.registrar(bien);
+        assertEquals(2, venta.cuotas().size());
+        assertEquals(2, venta.cuotas().get(1).numero());
+    }
+
+    @Test
+    @DisplayName("una cuota que vence el mismo día de la emisión no es válida")
+    void cuotaSinPlazo() {
+        prepararFactura("F001-7");
+        VentaRequest pedido = new VentaRequest("20555666777", "F001-7", null, FECHA,
+                List.of(item("Mercadería", "NIU", "1", "100.00")), desarrolloWeb.backend.entity.FormaPago.CREDITO,
+                List.of(new VentaRequest.Cuota(FECHA, new BigDecimal("118.00"))), null);
+
+        assertThrows(IllegalArgumentException.class, () -> ventaService.registrar(pedido));
+    }
+
+    @Test
+    @DisplayName("sin líneas ni monto no se puede emitir")
+    void sinDetalleNiMonto() {
+        when(clienteRepository.findByDocumento("20555666777")).thenReturn(Optional.of(clienteRuc));
+        when(ventaRepository.existsByNumeroComprobante("F001-8")).thenReturn(false);
+        when(configuracionService.obtenerTasaVigente("IGV")).thenReturn(new BigDecimal("0.1800"));
+
+        assertThrows(IllegalArgumentException.class, () -> ventaService.registrar(
+                new VentaRequest("20555666777", "F001-8", null, FECHA, List.of(), null, null, null)));
+    }
+
+    @Test
+    @DisplayName("una unidad que no está en el catálogo de SUNAT se rechaza")
+    void unidadInvalida() {
+        when(clienteRepository.findByDocumento("20555666777")).thenReturn(Optional.of(clienteRuc));
+        when(ventaRepository.existsByNumeroComprobante("F001-9")).thenReturn(false);
+        when(configuracionService.obtenerTasaVigente("IGV")).thenReturn(new BigDecimal("0.1800"));
+
+        assertThrows(IllegalArgumentException.class, () -> ventaService.registrar(new VentaRequest("20555666777",
+                "F001-9", null, FECHA, List.of(item("Algo", "XYZ", "1", "10.00")), null, null, null)));
+    }
+
+    @Test
+    @DisplayName("las boletas no se emiten al crédito")
+    void boletaAlCredito() {
+        when(clienteRepository.findByDocumento("10203040")).thenReturn(Optional.of(clienteDni));
+        when(ventaRepository.existsByNumeroComprobante("B001-9")).thenReturn(false);
+        when(configuracionService.obtenerTasaVigente("IGV")).thenReturn(new BigDecimal("0.1800"));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ventaService.registrar(
+                new VentaRequest("10203040", "B001-9", null, FECHA, List.of(item("Algo", "NIU", "1", "10.00")),
+                        desarrolloWeb.backend.entity.FormaPago.CREDITO,
+                        List.of(new VentaRequest.Cuota(FECHA.plusDays(10), new BigDecimal("11.80"))), null)));
+        assertTrue(error.getMessage().contains("factura"));
+    }
 
     private Cliente clienteDni;
     private Cliente clienteRuc;
@@ -110,7 +213,7 @@ class VentaServiceTest {
         ReglaNegocioException error = assertThrows(ReglaNegocioException.class,
                 () -> ventaService.registrar(new VentaRequest("20555666777", "F001-1", BigDecimal.TEN, FECHA)));
 
-        assertEquals("Ya existe una venta con el comprobante F001-1", error.getMessage());
+        assertTrue(error.getMessage().startsWith("Ya existe una venta con el comprobante F001-1. El siguiente número libre es F001-"), error.getMessage());
     }
 
     @Test

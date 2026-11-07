@@ -44,6 +44,7 @@ public record PlanillaResponse(
             BigDecimal tasaPension,
             BigDecimal descuentoPension,
             BigDecimal essalud,
+            BigDecimal rentaQuinta,
             BigDecimal neto,
             Long pagoId,
             String estadoPago) {
@@ -52,7 +53,7 @@ public record PlanillaResponse(
             return new Detalle(d.getId(), d.getTrabajadorId(), d.getNombres(), d.getDocumentoIdentidad(), d.getCargo(),
                     d.getArea(), d.getFechaIngreso(), d.getSueldoBase(), d.getDiasLaborados(), d.getRemuneracionBruta(),
                     d.getSistemaPension(), d.getAfp(), d.getTasaPension(), d.getDescuentoPension(), d.getEssalud(),
-                    d.getNeto(), d.getPagoId(), estadoPago);
+                    d.getRentaQuinta(), d.getNeto(), d.getPagoId(), estadoPago);
         }
     }
 }

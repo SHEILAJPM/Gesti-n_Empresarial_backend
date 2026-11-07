@@ -68,6 +68,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- Sesiones con JWT firmado (HS256): el frontend ya no guarda la contraseña -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+        </dependency>
 
         <!-- Bean Validation: @NotBlank, @Pattern, @Positive, @Digits... en los Request -->
         <dependency>

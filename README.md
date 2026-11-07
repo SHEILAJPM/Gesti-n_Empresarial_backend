@@ -17,9 +17,11 @@ Frontend (Angular): [Gesti-n_Empresarial_Frontend](https://github.com/SHEILAJPM/
 | Módulo | Qué hace |
 |---|---|
 | Personal | Ficha del trabajador, cese y reactivación, asistencia y documentos con vencimiento |
-| Portal del trabajador | Cada trabajador marca su entrada y salida por GPS dentro del radio de la sede y ve sus boletas |
-| Planillas | Cálculo mensual de ONP, AFP y EsSalud. RRHH la genera y Contabilidad la aprueba, lo que crea los pagos |
-| Ventas y clientes | Facturas (RUC) y boletas (DNI) con IGV, anulación y envío del comprobante electrónico |
+| Portal del trabajador | Cada trabajador marca su entrada y salida desde el celular: debe estar dentro del radio de la sede y tomarse una foto con su ubicación, la fecha y la hora impresas. Ve sus marcaciones, sus fotos y sus boletas |
+| Planillas | Cálculo mensual de ONP, AFP y EsSalud (con base mínima de EsSalud y tope de la prima AFP) y retención de renta de 5ta categoría. RRHH la genera y Contabilidad la aprueba, lo que crea los pagos |
+| Ventas y clientes | Facturas (RUC) y boletas (DNI) con detalle por líneas (productos del catálogo o escritas a mano), IGV, pago al contado o al crédito en cuotas, observaciones, anulación y envío del comprobante electrónico |
+| Productos | Catálogo de productos y servicios (código, descripción, unidad SUNAT y precio sin IGV) para armar los comprobantes |
+| Notas de crédito y débito | Corrigen facturas y boletas aceptadas por SUNAT (series FC01/BC01 y FD01/BD01, motivos de los catálogos 09 y 10): anulación, devolución total o por ítem, descuentos, intereses. Una nota de crédito no puede superar el saldo del comprobante y el resumen tributario las descuenta o suma |
 | Compras y proveedores | Facturas de compra para el crédito fiscal |
 | Tributario | IGV configurable, resumen mensual (débito, crédito e IGV por pagar) y simulador |
 | Pagos | Pagos programados a trabajadores y proveedores |
@@ -68,10 +70,15 @@ La API queda en <http://localhost:8080>.
 | `APISUNAT_PERSONA_ID`, `APISUNAT_PERSONA_TOKEN` | Credenciales de APISUNAT. Sin ellas se usa el simulador local de SUNAT |
 | `EMISOR_RUC`, `EMISOR_RAZON_SOCIAL` | Empresa que emite los comprobantes |
 | `DECOLECTA_TOKEN` | Token para consultar DNI y RUC. Se crea gratis en <https://decolecta.com/profile>. Sin él, el resto del sistema funciona y la consulta responde 503 |
+| `JWT_SECRET` | Clave para firmar las sesiones (mínimo 32 caracteres). Sin ella se usa una temporal y las sesiones se cierran al reiniciar |
+| `JWT_HORAS` | Horas que dura una sesión (por defecto 8) |
+| `CORS_ORIGENES` | URLs del frontend que pueden llamar a la API, separadas por coma (por defecto `http://localhost:4200`) |
+| `PLANILLA_UIT`, `PLANILLA_RMV`, `PLANILLA_RMA` | UIT del año, remuneración mínima vital y remuneración máxima asegurable (SBS). Actualizarlas cuando cambien |
+| `FOTOS_RETENCION_DIAS` | Días que se guardan las fotos de asistencia (por defecto 180; 0 = siempre). La marcación se conserva sin la imagen |
 
 ## Autenticación y roles
 
-La API usa HTTP Basic: cada petición envía `Authorization: Basic <usuario:clave en Base64>`. `GET /api/auth/me` devuelve el usuario, su rol y, si lo tiene, el trabajador vinculado.
+El frontend inicia sesión con `POST /api/auth/login` (`{ "usuario", "clave" }`) y recibe un JWT que envía en cada petición como `Authorization: Bearer <token>`. El token vence a las 8 horas, y si el administrador desactiva la cuenta deja de servir de inmediato. Para Postman, curl o los tests también se acepta HTTP Basic (`Authorization: Basic <usuario:clave en Base64>`). `GET /api/auth/me` devuelve el usuario, su rol y, si lo tiene, el trabajador vinculado.
 
 Al arrancar por primera vez se crean estos usuarios, solo si no existen y solo si su contraseña está en `.env`:
 
@@ -84,12 +91,13 @@ Al arrancar por primera vez se crean estos usuarios, solo si no existen y solo s
 
 Las contraseñas no están en el código. En el perfil `local` (base H2 en tu computadora) se usan las de desarrollo: `Admin123`, `Rrhh123`, `Conta123` y `AdminArea123`.
 
-Los roles `TRABAJADOR`, `VENDEDOR` y `ALMACEN` son del personal: cada cuenta va vinculada a la ficha de un trabajador y solo usa el portal (`/api/mi/**`).
+Los roles `TRABAJADOR`, `VENDEDOR` y `ALMACEN` son del personal: cada cuenta va vinculada a la ficha de un trabajador y usa el portal (`/api/mi/**`). Además, `VENDEDOR` emite boletas y facturas y registra clientes nuevos.
 
 | Recurso | Consultar | Modificar |
 |---|---|---|
 | Personal, asistencia y documentos | ADMIN, RRHH (la lista de personal también CONTABILIDAD) | ADMIN, RRHH |
-| Clientes y ventas | ADMIN, CONTABILIDAD, ADMINISTRACION | ADMIN, ADMINISTRACION (anular venta: ADMIN, CONTABILIDAD) |
+| Clientes, ventas y productos | ADMIN, CONTABILIDAD, ADMINISTRACION, VENDEDOR | Emitir venta y registrar cliente: ADMIN, ADMINISTRACION, VENDEDOR · editar o borrar clientes y productos: ADMIN, ADMINISTRACION · anular venta: ADMIN, CONTABILIDAD |
+| Notas de crédito y débito | ADMIN, CONTABILIDAD, ADMINISTRACION | ADMIN, CONTABILIDAD, ADMINISTRACION |
 | Proveedores y compras | ADMIN, ADMINISTRACION, CONTABILIDAD | ADMIN, ADMINISTRACION, CONTABILIDAD |
 | Planillas | ADMIN, RRHH, CONTABILIDAD | Generar: ADMIN, RRHH · Aprobar: ADMIN, CONTABILIDAD |
 | Pagos | ADMIN, CONTABILIDAD | ADMIN, CONTABILIDAD |
@@ -105,22 +113,24 @@ Todos devuelven JSON. Los errores tienen siempre la misma forma: `{ timestamp, s
 
 | Recurso | Endpoints |
 |---|---|
-| Sesión | `GET /api/auth/me` |
+| Sesión | `POST /api/auth/login`, `GET /api/auth/me`, `PUT /api/auth/clave` (cambiar la propia) |
 | Personal | `GET/POST /api/personal`, `GET/PUT/DELETE /api/personal/{id}`, `GET /api/personal/area/{area}`, `PATCH /api/personal/{id}/cesar`, `PATCH /api/personal/{id}/reactivar` |
-| Asistencia | `GET /api/asistencia`, `POST /api/asistencia/marcar`, `GET /api/asistencia/trabajador/{id}`, `GET /api/asistencia/intentos` |
+| Asistencia | `GET /api/asistencia`, `POST /api/asistencia/marcar`, `GET /api/asistencia/trabajador/{id}`, `GET /api/asistencia/intentos`, `GET /api/asistencia/resumen?anio=&mes=`, `GET /api/asistencia/fotos/{fotoId}` |
 | Documentos | `GET/POST /api/documentos`, `GET /api/documentos/trabajador/{id}`, `GET /api/documentos/proximos-a-vencer`, `GET /api/documentos/vencidos` |
-| Portal | `GET /api/mi/perfil`, `GET/POST /api/mi/asistencia`, `GET /api/mi/boletas` |
+| Portal | `GET /api/mi/perfil`, `GET/POST /api/mi/asistencia`, `GET /api/mi/asistencia/{id}/foto`, `GET /api/mi/boletas` |
 | Sede | `GET/PUT /api/sede` |
 | Planillas | `GET /api/planillas`, `GET/DELETE /api/planillas/{id}`, `POST /api/planillas/generar`, `PATCH /api/planillas/{id}/aprobar` |
 | Pagos | `GET/POST /api/pagos`, `GET /api/pagos/pendientes`, `PUT /api/pagos/{id}/pagar`, `GET /api/pagos/trabajador/{id}`, `GET /api/pagos/proveedor/{id}` |
 | Clientes | `GET/POST /api/clientes`, `GET/PUT/DELETE /api/clientes/{id}`, `GET /api/clientes/buscar`, `GET /api/clientes/documento/{documento}` |
+| Notas | `GET/POST /api/notas` (`?ventaId=` filtra por venta), `GET /api/notas/{id}`, `GET /api/notas/motivos`, `GET /api/notas/{id}/sunat`, `POST /api/notas/{id}/sunat/reenviar` |
+| Productos | `GET/POST /api/productos`, `PUT /api/productos/{id}`, `PATCH /api/productos/{id}/estado`, `GET /api/productos/unidades` |
 | Ventas | `GET/POST /api/ventas`, `GET /api/ventas/{id}`, `PATCH /api/ventas/{id}/anular`, `GET /api/ventas/cliente/{id}`, `GET /api/ventas/periodo`, `GET /api/ventas/igv-periodo`, `GET /api/ventas/siguiente-numero`, `GET /api/ventas/reportes/por-comprobante`, `GET /api/ventas/reportes/ticket-promedio` |
 | Facturación electrónica | `GET /api/ventas/{id}/sunat`, `POST /api/ventas/{id}/sunat/reenviar`, `GET /api/facturacion/estado` |
 | Proveedores | `GET/POST /api/proveedores`, `GET/PUT/DELETE /api/proveedores/{id}` |
 | Compras | `GET/POST /api/compras`, `GET/PUT/DELETE /api/compras/{id}`, `GET /api/compras/proveedor/{id}`, `GET /api/compras/periodo`, `GET /api/compras/igv-periodo` |
 | Tributario | `GET /api/tributario/resumen`, `GET /api/tributario/resumen-mensual`, `GET /api/tributario/calcular`, `GET /api/tributario/configuracion`, `PUT /api/tributario/configuracion/{codigo}` |
 | Consultas | `GET /api/consultas/documento/{dni o ruc}` |
-| Usuarios | `GET/POST /api/usuarios`, `PATCH /api/usuarios/{id}/estado`, `PATCH /api/usuarios/{id}/trabajador` |
+| Usuarios | `GET/POST /api/usuarios`, `PATCH /api/usuarios/{id}/estado`, `PATCH /api/usuarios/{id}/trabajador`, `PUT /api/usuarios/{id}/clave` (restablecer) |
 | Panel | `GET /api/dashboard` |
 
 Ejemplo:

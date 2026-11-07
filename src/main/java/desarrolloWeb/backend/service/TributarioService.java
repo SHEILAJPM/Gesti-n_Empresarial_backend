@@ -6,8 +6,11 @@ import desarrolloWeb.backend.dto.ResumenTributario;
 import desarrolloWeb.backend.dto.SimulacionResponse;
 import desarrolloWeb.backend.entity.Compra;
 import desarrolloWeb.backend.entity.EstadoVenta;
+import desarrolloWeb.backend.entity.Nota;
+import desarrolloWeb.backend.entity.TipoNota;
 import desarrolloWeb.backend.entity.Venta;
 import desarrolloWeb.backend.repository.CompraRepository;
+import desarrolloWeb.backend.repository.NotaRepository;
 import desarrolloWeb.backend.repository.VentaRepository;
 import desarrolloWeb.backend.util.CalculadoraTributaria;
 import org.springframework.stereotype.Service;
@@ -17,6 +20,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.List;
 
 @Service
 public class TributarioService {
@@ -24,11 +28,14 @@ public class TributarioService {
     private final CompraRepository compraRepository;
     private final VentaRepository ventaRepository;
     private final ConfiguracionTributariaService configuracionService;
+    private final NotaRepository notaRepository;
     private final CalculadoraTributaria calculadora = new CalculadoraTributaria();
 
     public TributarioService(CompraRepository compraRepository,
                              VentaRepository ventaRepository,
-                             ConfiguracionTributariaService configuracionService) {
+                             ConfiguracionTributariaService configuracionService,
+                             NotaRepository notaRepository) {
+        this.notaRepository = notaRepository;
         this.compraRepository = compraRepository;
         this.ventaRepository = ventaRepository;
         this.configuracionService = configuracionService;
@@ -53,8 +60,18 @@ public class TributarioService {
             totalVentasSinIgv = totalVentasSinIgv.add(venta.getMontoSinIgv());
             igvVentas = igvVentas.add(venta.getIgv());
         }
+        // Las notas del periodo ajustan el débito fiscal: crédito resta, débito suma
+        for (Nota nota : notaRepository == null ? List.<Nota>of()
+                : notaRepository.buscarPorPeriodo(desde, hasta, EstadoVenta.EMITIDA)) {
+            int signo = nota.getTipo() == TipoNota.CREDITO ? -1 : 1;
+            totalVentasSinIgv = totalVentasSinIgv.add(nota.getMontoSinIgv().multiply(BigDecimal.valueOf(signo)));
+            igvVentas = igvVentas.add(nota.getIgv().multiply(BigDecimal.valueOf(signo)));
+        }
 
-        LiquidacionIgv liquidacion = calculadora.calcularIgvPorPagar(igvVentas, igvCompras);
+        // Si las notas de crédito superan las ventas del mes, el exceso de IGV se suma al saldo a favor
+        LiquidacionIgv liquidacion = igvVentas.signum() >= 0
+                ? calculadora.calcularIgvPorPagar(igvVentas, igvCompras)
+                : calculadora.calcularIgvPorPagar(cero(), igvCompras.add(igvVentas.negate()));
 
         return new ResumenTributario(
                 desde,

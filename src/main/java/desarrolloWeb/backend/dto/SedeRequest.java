@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.time.LocalTime;
 
 public record SedeRequest(
         @NotBlank(message = "El nombre de la sede es obligatorio")
@@ -36,5 +37,11 @@ public record SedeRequest(
         @NotNull(message = "La precisión máxima es obligatoria")
         @Min(value = 5, message = "La precisión mínima es 5 m")
         @Max(value = 500, message = "La precisión máxima es 500 m")
-        Integer precisionMaxima) {
+        Integer precisionMaxima,
+        // Horario (opcional: sin valor se usa 08:00 a 17:00 con 10 minutos de tolerancia)
+        LocalTime horaEntrada,
+        LocalTime horaSalida,
+        @Min(value = 0, message = "La tolerancia no puede ser negativa")
+        @Max(value = 120, message = "La tolerancia máxima es 120 minutos")
+        Integer toleranciaMinutos) {
 }

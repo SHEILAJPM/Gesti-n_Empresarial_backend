@@ -6,6 +6,8 @@ import desarrolloWeb.backend.dto.DocumentoElectronico;
 import desarrolloWeb.backend.dto.RespuestaFacturacion;
 import desarrolloWeb.backend.entity.ComprobanteSunat;
 import desarrolloWeb.backend.entity.EstadoSunat;
+import desarrolloWeb.backend.entity.FormaPago;
+import desarrolloWeb.backend.entity.Nota;
 import desarrolloWeb.backend.entity.TipoComprobante;
 import desarrolloWeb.backend.entity.TipoDocumento;
 import desarrolloWeb.backend.entity.Venta;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /* Emite, consulta y anula el comprobante electrónico de una venta con el proveedor configurado.
@@ -35,11 +38,32 @@ public class FacturacionService {
     }
 
     public void emitir(Venta venta) {
-        ComprobanteSunat c = venta.getSunat();
+        enviar(venta.getSunat(), documentoDe(venta), venta.getNumeroComprobante());
+    }
+
+    public void emitir(Nota nota) {
+        enviar(nota.getSunat(), documentoDe(nota), nota.getNumero());
+    }
+
+    public void consultar(Venta venta) {
+        consultar(venta.getSunat());
+    }
+
+    public void consultar(Nota nota) {
+        consultar(nota.getSunat());
+    }
+
+    public ComprobanteSunatResponse respuesta(Nota nota) {
+        ComprobanteSunat c = nota.getSunat();
+        String pdf = c.getEstado() == EstadoSunat.ACEPTADO ? proveedor.urlPdf(c.getDocumentId(), c.getFileName()) : null;
+        return ComprobanteSunatResponse.de(c, pdf);
+    }
+
+    /* Envía cualquier comprobante (factura, boleta o nota) y deja en c el resultado */
+    private void enviar(ComprobanteSunat c, DocumentoElectronico documento, String numero) {
         if (c.getEstado() == EstadoSunat.ACEPTADO || c.getEstado() == EstadoSunat.PENDIENTE) {
-            throw new ReglaNegocioException("El comprobante " + venta.getNumeroComprobante() + " ya fue enviado");
+            throw new ReglaNegocioException("El comprobante " + numero + " ya fue enviado");
         }
-        DocumentoElectronico documento = documentoDe(venta);
         c.setProveedor(proveedor.nombre());
         c.setFileName(documento.fileName(propiedades.emisor().ruc()));
         c.setFechaEnvio(LocalDateTime.now());
@@ -52,17 +76,35 @@ public class FacturacionService {
             c.setMensaje(r.mensaje());
             if (r.estado() == EstadoSunat.PENDIENTE && r.documentId() != null) {
                 // Suele resolverse en segundos; si sigue pendiente se consulta después
-                consultar(venta);
+                consultar(c);
             }
         } catch (RuntimeException e) {
-            log.warn("No se pudo emitir {}: {}", venta.getNumeroComprobante(), e.getMessage());
+            log.warn("No se pudo emitir {}: {}", numero, e.getMessage());
             c.setEstado(EstadoSunat.ERROR);
             c.setMensaje("No se pudo conectar con " + proveedor.nombre() + ": " + e.getMessage());
         }
     }
 
-    public void consultar(Venta venta) {
-        ComprobanteSunat c = venta.getSunat();
+    /* Nota de crédito/débito: mismas reglas de documento, con la referencia a la factura o boleta original */
+    DocumentoElectronico documentoDe(Nota nota) {
+        Venta venta = nota.getVenta();
+        String[] partes = nota.getNumero().split("-");
+        boolean clienteRuc = venta.getCliente().getTipoDocumento() == TipoDocumento.RUC;
+        List<DocumentoElectronico.Linea> lineas = nota.getItems().stream()
+                .map(i -> new DocumentoElectronico.Linea(i.getCodigo(), i.getDescripcion(), i.getUnidad(),
+                        i.getCantidad(), i.getValorUnitario(), i.getValorVenta(), i.getIgv()))
+                .toList();
+        String tipoAfectado = venta.getTipoComprobante() == TipoComprobante.FACTURA ? "01" : "03";
+        String[] afectado = venta.getNumeroComprobante().split("-");
+        String numeroAfectado = afectado[0] + "-" + String.format("%08d", Integer.parseInt(afectado[1]));
+        return new DocumentoElectronico(nota.getTipo().getCodigoSunat(), partes[0], Integer.parseInt(partes[1]),
+                nota.getFecha(), clienteRuc ? "6" : "1", venta.getCliente().getDocumento(), venta.getCliente().getNombre(),
+                nota.getSustento(), nota.getMontoSinIgv(), nota.getIgv(), nota.getMontoTotal(), nota.getTasaAplicada(),
+                lineas, "Contado", List.of(), null,
+                new DocumentoElectronico.Referencia(tipoAfectado, numeroAfectado, nota.getMotivoCodigo(), nota.getSustento()));
+    }
+
+    private void consultar(ComprobanteSunat c) {
         if (c.getDocumentId() == null) {
             return;
         }
@@ -114,6 +156,21 @@ public class FacturacionService {
         String[] partes = venta.getNumeroComprobante().split("-");
         boolean factura = venta.getTipoComprobante() == TipoComprobante.FACTURA;
         boolean clienteRuc = venta.getCliente().getTipoDocumento() == TipoDocumento.RUC;
+        if (!venta.getItems().isEmpty()) {
+            List<DocumentoElectronico.Linea> lineas = venta.getItems().stream()
+                    .map(i -> new DocumentoElectronico.Linea(i.getCodigo(), i.getDescripcion(), i.getUnidad(),
+                            i.getCantidad(), i.getValorUnitario(), i.getValorVenta(), i.getIgv()))
+                    .toList();
+            List<DocumentoElectronico.CuotaPago> cuotas = venta.getCuotas().stream()
+                    .map(c -> new DocumentoElectronico.CuotaPago(c.getNumero(), c.getFechaVencimiento(), c.getMonto()))
+                    .toList();
+            return new DocumentoElectronico(factura ? "01" : "03", partes[0], Integer.parseInt(partes[1]),
+                    venta.getFecha(), clienteRuc ? "6" : "1", venta.getCliente().getDocumento(),
+                    venta.getCliente().getNombre(), DESCRIPCION_ITEM, venta.getMontoSinIgv(), venta.getIgv(),
+                    venta.getMontoTotal(), venta.getTasaAplicada(), lineas,
+                    venta.getFormaPago() == FormaPago.CREDITO ? "Credito" : "Contado", cuotas, venta.getObservaciones(), null);
+        }
+        // Ventas registradas sin detalle: una línea genérica por el total
         return new DocumentoElectronico(
                 factura ? "01" : "03",
                 partes[0],

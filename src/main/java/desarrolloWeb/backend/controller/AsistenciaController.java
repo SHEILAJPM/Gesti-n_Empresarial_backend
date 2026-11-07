@@ -2,6 +2,7 @@ package desarrolloWeb.backend.controller;
 
 import desarrolloWeb.backend.dto.IntentoMarcacionResponse;
 import desarrolloWeb.backend.dto.MarcarRequest;
+import desarrolloWeb.backend.dto.ResumenAsistenciaResponse;
 import desarrolloWeb.backend.entity.Marcacion;
 import desarrolloWeb.backend.service.AsistenciaService;
 import org.springframework.http.HttpStatus;
@@ -11,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api/asistencia")
 public class AsistenciaController {
@@ -65,6 +65,17 @@ public ResponseEntity<List<Marcacion>> listarPorTrabajadorJPQL(
             asistenciaService.listarPorTrabajadorJPQL(trabajadorId)
     );
 }
+
+    /* Resumen del mes por trabajador: días, horas, tardanzas y faltas */
+    @GetMapping("/resumen")
+    public ResponseEntity<ResumenAsistenciaResponse> resumen(@RequestParam int anio, @RequestParam int mes) {
+        return ResponseEntity.ok(asistenciaService.resumenMensual(anio, mes));
+    }
+
+    @GetMapping("/fotos/{fotoId}")
+    public ResponseEntity<byte[]> foto(@PathVariable Long fotoId) {
+        return FotoRespuesta.de(asistenciaService.foto(fotoId));
+    }
 
     /* Intentos de marcar desde el portal que fueron rechazados */
     @GetMapping("/intentos")

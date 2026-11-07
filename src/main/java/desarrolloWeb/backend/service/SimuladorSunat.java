@@ -76,7 +76,8 @@ public class SimuladorSunat implements FacturacionElectronica {
 
     static List<Integer> validar(DocumentoElectronico d) {
         List<Integer> errores = new ArrayList<>();
-        boolean esFactura = "01".equals(d.tipo());
+        // En una nota manda el comprobante que modifica: FC01 va con factura, BC01 con boleta
+        boolean esFactura = d.esNota() ? "01".equals(d.referencia().tipoDocumento()) : "01".equals(d.tipo());
         if (esFactura && !("6".equals(d.tipoDocumentoCliente()) && d.documentoCliente().matches("\\d{11}"))) {
             errores.add(0);
         }

@@ -14,6 +14,15 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
 
     boolean existsByNumeroComprobante(String numeroComprobante);
 
+    /* Listado con el cliente en la misma consulta: sin esto se hace una consulta por venta (lento con Neon) */
+    @Query("SELECT v FROM Venta v JOIN FETCH v.cliente")
+    List<Venta> listarConCliente();
+
+    /* Mayor correlativo emitido en una serie (prefijo "F001-"), calculado en la base sin traer las ventas */
+    @Query(value = "SELECT MAX(CAST(SUBSTRING(numero_comprobante, :desde) AS BIGINT)) FROM ventas "
+            + "WHERE numero_comprobante LIKE CONCAT(:prefijo, '%')", nativeQuery = true)
+    Long maximoCorrelativo(@Param("prefijo") String prefijo, @Param("desde") int desde);
+
     @Query("""
             SELECT v
             FROM Venta v

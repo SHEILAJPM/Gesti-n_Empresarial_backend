@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
+import java.time.LocalTime;
 
 /* Punto de la empresa para la asistencia por GPS */
 @Entity
@@ -37,6 +38,16 @@ public class Sede {
     // Error máximo aceptado del GPS del celular
     @Column(name = "precision_maxima", nullable = false)
     private Integer precisionMaxima;
+
+    // Horario: con él se calculan tardanzas (entrada después de hora_entrada + tolerancia) y faltas
+    @Column(name = "hora_entrada", nullable = false)
+    private LocalTime horaEntrada = LocalTime.of(8, 0);
+
+    @Column(name = "hora_salida", nullable = false)
+    private LocalTime horaSalida = LocalTime.of(17, 0);
+
+    @Column(name = "tolerancia_minutos", nullable = false)
+    private Integer toleranciaMinutos = 10;
 
     @Column(nullable = false)
     private boolean activa = true;
@@ -103,5 +114,29 @@ public class Sede {
 
     public void setActiva(boolean activa) {
         this.activa = activa;
+    }
+
+    public LocalTime getHoraEntrada() {
+        return horaEntrada;
+    }
+
+    public void setHoraEntrada(LocalTime horaEntrada) {
+        this.horaEntrada = horaEntrada;
+    }
+
+    public LocalTime getHoraSalida() {
+        return horaSalida;
+    }
+
+    public void setHoraSalida(LocalTime horaSalida) {
+        this.horaSalida = horaSalida;
+    }
+
+    public Integer getToleranciaMinutos() {
+        return toleranciaMinutos;
+    }
+
+    public void setToleranciaMinutos(Integer toleranciaMinutos) {
+        this.toleranciaMinutos = toleranciaMinutos;
     }
 }

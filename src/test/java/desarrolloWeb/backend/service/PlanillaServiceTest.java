@@ -13,6 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
+import desarrolloWeb.backend.config.ParametrosPlanilla;
+import desarrolloWeb.backend.repository.PlanillaDetalleRepository;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -42,6 +45,11 @@ class PlanillaServiceTest {
     private PagoRepository pagoRepository;
     @Mock
     private PagoService pagoService;
+
+    @Mock
+    private PlanillaDetalleRepository detalleRepository;
+    @Spy
+    private ParametrosPlanilla parametros = new ParametrosPlanilla();
 
     @InjectMocks
     private PlanillaService planillaService;

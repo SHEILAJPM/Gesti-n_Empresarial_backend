@@ -5,13 +5,15 @@ import desarrolloWeb.backend.dto.DocumentoElectronico;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /* Arma el documentBody de APISUNAT: el XML UBL 2.1 de SUNAT expresado como JSON
    (cada etiqueta es una clave; el contenido va en "_text" y los atributos en "_attributes").
-   Cubre factura/boleta gravada con IGV, una línea y pago al contado.
+   Cubre factura/boleta gravada con IGV, con una o varias líneas, pago al contado o al crédito en cuotas,
+   y notas de crédito (07) y débito (08) con referencia al comprobante que modifican.
    Para otros casos, comparar con el "Generador JSON" del portal APISUNAT (botón { } al emitir). */
 public final class DocumentoUbl {
 
@@ -27,10 +29,29 @@ public final class DocumentoUbl {
         ubl.put("cbc:ID", texto(d.numero()));
         ubl.put("cbc:IssueDate", texto(d.fechaEmision().toString()));
         ubl.put("cbc:IssueTime", texto("00:00:00"));
-        // 0101 = venta interna (catálogo 51)
-        ubl.put("cbc:InvoiceTypeCode", conAtributos(d.tipo(), Map.of("listID", "0101")));
-        ubl.put("cbc:Note", List.of(conAtributos(MontoEnLetras.convertir(d.total()), Map.of("languageLocaleID", "1000"))));
+        if (!d.esNota()) {
+            // 0101 = venta interna (catálogo 51)
+            ubl.put("cbc:InvoiceTypeCode", conAtributos(d.tipo(), Map.of("listID", "0101")));
+        }
+        List<Object> notas = new ArrayList<>();
+        notas.add(conAtributos(MontoEnLetras.convertir(d.total()), Map.of("languageLocaleID", "1000")));
+        if (d.observaciones() != null && !d.observaciones().isBlank()) {
+            notas.add(texto(d.observaciones()));
+        }
+        ubl.put("cbc:Note", notas);
         ubl.put("cbc:DocumentCurrencyCode", texto(MONEDA));
+
+        if (d.esNota()) {
+            // Comprobante que se modifica y por qué (catálogo 09 en crédito, 10 en débito)
+            DocumentoElectronico.Referencia ref = d.referencia();
+            ubl.put("cac:DiscrepancyResponse", Map.of(
+                    "cbc:ReferenceID", texto(ref.numero()),
+                    "cbc:ResponseCode", texto(ref.motivoCodigo()),
+                    "cbc:Description", texto(ref.sustento())));
+            ubl.put("cac:BillingReference", Map.of("cac:InvoiceDocumentReference", Map.of(
+                    "cbc:ID", texto(ref.numero()),
+                    "cbc:DocumentTypeCode", texto(ref.tipoDocumento()))));
+        }
 
         ubl.put("cac:AccountingSupplierParty", Map.of("cac:Party", parte("6", emisor.ruc(), emisor.razonSocial(),
                 Map.of("cbc:AddressTypeCode", texto("0000")), emisor.nombreComercial())));
@@ -38,32 +59,71 @@ public final class DocumentoUbl {
                 d.nombreCliente(), null, null)));
 
         if ("01".equals(d.tipo())) {
-            // Desde 2021 la factura debe indicar la forma de pago
-            ubl.put("cac:PaymentTerms", List.of(Map.of("cbc:ID", texto("FormaPago"), "cbc:PaymentMeansID", texto("Contado"))));
+            ubl.put("cac:PaymentTerms", formaPago(d));
         }
 
         ubl.put("cac:TaxTotal", impuestos(d.base(), d.igv()));
-        ubl.put("cac:LegalMonetaryTotal", Map.of(
+        boolean debito = "08".equals(d.tipo());
+        // La nota de débito usa RequestedMonetaryTotal; factura, boleta y nota de crédito, LegalMonetaryTotal
+        ubl.put(debito ? "cac:RequestedMonetaryTotal" : "cac:LegalMonetaryTotal", Map.of(
                 "cbc:LineExtensionAmount", monto(d.base()),
                 "cbc:TaxInclusiveAmount", monto(d.total()),
                 "cbc:PayableAmount", monto(d.total())));
-        ubl.put("cac:InvoiceLine", List.of(linea(d)));
+        String etiquetaLinea = "07".equals(d.tipo()) ? "cac:CreditNoteLine" : debito ? "cac:DebitNoteLine" : "cac:InvoiceLine";
+        String etiquetaCantidad = "07".equals(d.tipo()) ? "cbc:CreditedQuantity" : debito ? "cbc:DebitedQuantity" : "cbc:InvoicedQuantity";
+        List<Object> lineas = new ArrayList<>();
+        for (int i = 0; i < d.lineas().size(); i++) {
+            lineas.add(linea(i + 1, d.lineas().get(i), d.tasaIgv(), etiquetaCantidad));
+        }
+        ubl.put(etiquetaLinea, lineas);
         return ubl;
     }
 
-    private static Map<String, Object> linea(DocumentoElectronico d) {
+    /* Desde 2021 la factura indica la forma de pago. Al crédito: el monto pendiente y cada cuota (Cuota001, ...) */
+    static List<Object> formaPago(DocumentoElectronico d) {
+        List<Object> terminos = new ArrayList<>();
+        if (!"Credito".equals(d.formaPago()) || d.cuotas().isEmpty()) {
+            terminos.add(Map.of("cbc:ID", texto("FormaPago"), "cbc:PaymentMeansID", texto("Contado")));
+            return terminos;
+        }
+        Map<String, Object> credito = new LinkedHashMap<>();
+        credito.put("cbc:ID", texto("FormaPago"));
+        credito.put("cbc:PaymentMeansID", texto("Credito"));
+        credito.put("cbc:Amount", monto(d.total()));
+        terminos.add(credito);
+        for (DocumentoElectronico.CuotaPago c : d.cuotas()) {
+            Map<String, Object> cuota = new LinkedHashMap<>();
+            cuota.put("cbc:ID", texto("FormaPago"));
+            cuota.put("cbc:PaymentMeansID", texto(String.format("Cuota%03d", c.numero())));
+            cuota.put("cbc:Amount", monto(c.monto()));
+            cuota.put("cbc:PaymentDueDate", texto(c.fechaVencimiento().toString()));
+            terminos.add(cuota);
+        }
+        return terminos;
+    }
+
+    private static Map<String, Object> linea(int numero, DocumentoElectronico.Linea l, BigDecimal tasa,
+                                             String etiquetaCantidad) {
         Map<String, Object> linea = new LinkedHashMap<>();
-        linea.put("cbc:ID", texto("1"));
-        // ZZ = servicio / unidad genérica (catálogo 03)
-        linea.put("cbc:InvoicedQuantity", conAtributos("1", Map.of("unitCode", "ZZ")));
-        linea.put("cbc:LineExtensionAmount", monto(d.base()));
+        linea.put("cbc:ID", texto(String.valueOf(numero)));
+        // unitCode: catálogo 03 (NIU unidad, ZZ servicio, KGM kilogramo, ...)
+        linea.put(etiquetaCantidad, conAtributos(l.cantidad().stripTrailingZeros().toPlainString(),
+                Map.of("unitCode", l.unidad())));
+        linea.put("cbc:LineExtensionAmount", monto(l.valorVenta()));
         // 01 = precio unitario con IGV (catálogo 16)
+        BigDecimal precioConIgv = l.valorVenta().add(l.igv()).divide(l.cantidad(), 2, RoundingMode.HALF_UP);
         linea.put("cac:PricingReference", Map.of("cac:AlternativeConditionPrice", Map.of(
-                "cbc:PriceAmount", monto(d.total()),
+                "cbc:PriceAmount", monto(precioConIgv),
                 "cbc:PriceTypeCode", texto("01"))));
-        linea.put("cac:TaxTotal", impuestos(d.base(), d.igv(), d.tasaIgv()));
-        linea.put("cac:Item", Map.of("cbc:Description", texto(d.descripcion())));
-        linea.put("cac:Price", Map.of("cbc:PriceAmount", monto(d.base())));
+        linea.put("cac:TaxTotal", impuestos(l.valorVenta(), l.igv(), tasa));
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("cbc:Description", texto(l.descripcion()));
+        if (l.codigo() != null && !l.codigo().isBlank()) {
+            item.put("cac:SellersItemIdentification", Map.of("cbc:ID", texto(l.codigo())));
+        }
+        linea.put("cac:Item", item);
+        // Valor unitario sin IGV
+        linea.put("cac:Price", Map.of("cbc:PriceAmount", monto(l.valorUnitario())));
         return linea;
     }
 

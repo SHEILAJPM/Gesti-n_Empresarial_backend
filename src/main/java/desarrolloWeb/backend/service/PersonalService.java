@@ -7,6 +7,9 @@ import desarrolloWeb.backend.entity.Trabajador;
 import desarrolloWeb.backend.exception.RecursoNoEncontradoException;
 import desarrolloWeb.backend.exception.ReglaNegocioException;
 import desarrolloWeb.backend.repository.DocumentoRepository;
+import desarrolloWeb.backend.repository.IntentoMarcacionRepository;
+import desarrolloWeb.backend.repository.PlanillaDetalleRepository;
+import desarrolloWeb.backend.repository.UsuarioRepository;
 import desarrolloWeb.backend.repository.MarcacionRepository;
 import desarrolloWeb.backend.repository.PagoRepository;
 import desarrolloWeb.backend.repository.TrabajadorRepository;
@@ -23,11 +26,20 @@ public class PersonalService {
     private final MarcacionRepository marcacionRepository;
     private final DocumentoRepository documentoRepository;
     private final PagoRepository pagoRepository;
+    private final IntentoMarcacionRepository intentoRepository;
+    private final PlanillaDetalleRepository planillaDetalleRepository;
+    private final UsuarioRepository usuarioRepository;
 
     public PersonalService(TrabajadorRepository trabajadorRepository,
                            MarcacionRepository marcacionRepository,
                            DocumentoRepository documentoRepository,
-                           PagoRepository pagoRepository) {
+                           PagoRepository pagoRepository,
+                           IntentoMarcacionRepository intentoRepository,
+                           PlanillaDetalleRepository planillaDetalleRepository,
+                           UsuarioRepository usuarioRepository) {
+        this.intentoRepository = intentoRepository;
+        this.planillaDetalleRepository = planillaDetalleRepository;
+        this.usuarioRepository = usuarioRepository;
         this.trabajadorRepository = trabajadorRepository;
         this.marcacionRepository = marcacionRepository;
         this.documentoRepository = documentoRepository;
@@ -123,11 +135,18 @@ public class PersonalService {
     @Transactional
     public void eliminar(Long id) {
         Trabajador trabajador = obtenerEntidad(id);
-        if (marcacionRepository.existsByTrabajadorId(id)
-                || documentoRepository.existsByTrabajadorId(id)
-                || pagoRepository.existsByTrabajador_Id(id)) {
+        if (usuarioRepository.existsByTrabajadorId(id)) {
             throw new ReglaNegocioException(trabajador.getNombres()
-                    + " tiene asistencias, documentos o pagos registrados; dalo de baja en lugar de eliminarlo");
+                    + " tiene una cuenta de usuario vinculada; desvincúlala en Usuarios o dalo de baja en lugar de eliminarlo");
+        }
+        // Todo lo que guarda historial del trabajador impide borrarlo: se conserva y se da de baja
+        if (marcacionRepository.existsByTrabajadorId(id)
+                || intentoRepository.existsByTrabajadorId(id)
+                || documentoRepository.existsByTrabajadorId(id)
+                || pagoRepository.existsByTrabajador_Id(id)
+                || planillaDetalleRepository.existsByTrabajadorId(id)) {
+            throw new ReglaNegocioException(trabajador.getNombres()
+                    + " tiene asistencias, documentos, pagos o planillas registrados; dalo de baja en lugar de eliminarlo");
         }
         trabajadorRepository.delete(trabajador);
     }

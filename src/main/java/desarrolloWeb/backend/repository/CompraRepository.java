@@ -11,6 +11,10 @@ import java.util.Optional;
 
 public interface CompraRepository extends JpaRepository<Compra, Long> {
 
+    /* Listado con el proveedor en la misma consulta (evita una consulta por compra) */
+    @Query("SELECT c FROM Compra c JOIN FETCH c.proveedor")
+    List<Compra> listarConProveedor();
+
     Optional<Compra> findByProveedorIdAndNumeroComprobante(Long proveedorId, String numeroComprobante);
 
     @Query("""

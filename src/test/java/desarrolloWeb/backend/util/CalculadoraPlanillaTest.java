@@ -69,4 +69,59 @@ class CalculadoraPlanillaTest {
         assertThrows(IllegalArgumentException.class, () -> CalculadoraPlanilla.tasaPension(null, null));
         assertThrows(IllegalArgumentException.class, () -> CalculadoraPlanilla.tasaPension("AFP", "Desconocida"));
     }
+
+    private static final CalculadoraPlanilla.Parametros P = CalculadoraPlanilla.Parametros.REFERENCIALES;
+
+    @Test
+    void essaludNoBajaDeLaRemuneracionMinima() {
+        CalculadoraPlanilla.Calculo completo = CalculadoraPlanilla.calcular(new BigDecimal("900.00"), 30, "ONP", null, P);
+        assertEquals(new BigDecimal("101.70"), completo.essalud());
+
+        // Con medio mes, la base mínima también es proporcional: 1130 × 15 / 30 = 565
+        CalculadoraPlanilla.Calculo medio = CalculadoraPlanilla.calcular(new BigDecimal("900.00"), 15, "ONP", null, P);
+        assertEquals(new BigDecimal("50.85"), medio.essalud());
+    }
+
+    @Test
+    void primaDeSeguroAfpSeTopaEnLaRemuneracionMaximaAsegurable() {
+        // 20000 × (10 % + 1.55 %) + 12234.34 × 1.37 % = 2310 + 167.61
+        CalculadoraPlanilla.Calculo c = CalculadoraPlanilla.calcular(new BigDecimal("20000.00"), 30, "AFP", "Integra", P);
+        assertEquals(new BigDecimal("2477.61"), c.descuentoPension());
+    }
+
+    @Test
+    void sueldoBajoNoTieneRetencionDeQuinta() {
+        // 2500 × 14 = 35000, menos que 7 UIT (38500)
+        assertEquals(new BigDecimal("0.00"), CalculadoraPlanilla.retencionQuinta(1, new BigDecimal("2500.00"),
+                new BigDecimal("2500.00"), BigDecimal.ZERO, java.util.Map.of(), P));
+    }
+
+    @Test
+    void quintaDeEneroEsElImpuestoAnualEntreDoce() {
+        // Proyección 5000 × 14 = 70000; renta neta 31500 → 27500 × 8 % + 4000 × 14 % = 2760 → 2760 / 12
+        assertEquals(new BigDecimal("230.00"), CalculadoraPlanilla.retencionQuinta(1, new BigDecimal("5000.00"),
+                new BigDecimal("5000.00"), BigDecimal.ZERO, java.util.Map.of(), P));
+    }
+
+    @Test
+    void quintaDeAbrilRestaLoRetenidoYDivideEntreNueve() {
+        java.util.Map<Integer, BigDecimal> retenido = java.util.Map.of(1, new BigDecimal("230.00"),
+                2, new BigDecimal("230.00"), 3, new BigDecimal("230.00"));
+        assertEquals(new BigDecimal("230.00"), CalculadoraPlanilla.retencionQuinta(4, new BigDecimal("5000.00"),
+                new BigDecimal("5000.00"), new BigDecimal("15000.00"), retenido, P));
+    }
+
+    @Test
+    void escalaDeRentaAplicaLosCincoTramos() {
+        // Neta 961500: 2200 + 11550 + 14025 + 11000 + 214200
+        assertEquals(new BigDecimal("252975.00"),
+                CalculadoraPlanilla.impuestoAnual(new BigDecimal("1000000"), new BigDecimal("5500")));
+    }
+
+    @Test
+    void elNetoDescuentaPensionYQuinta() {
+        CalculadoraPlanilla.Calculo c = CalculadoraPlanilla.calcular(new BigDecimal("5000.00"), 30, "ONP", null, P)
+                .conRentaQuinta(new BigDecimal("230.00"));
+        assertEquals(new BigDecimal("4120.00"), c.neto());
+    }
 }

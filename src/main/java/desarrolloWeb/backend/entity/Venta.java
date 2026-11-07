@@ -1,5 +1,6 @@
 package desarrolloWeb.backend.entity;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -12,10 +13,14 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "ventas", indexes = @Index(name = "idx_ventas_fecha", columnList = "fecha"))
@@ -58,7 +63,59 @@ public class Venta {
     @Embedded
     private ComprobanteSunat sunat = new ComprobanteSunat();
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "forma_pago", nullable = false, length = 7)
+    private FormaPago formaPago = FormaPago.CONTADO;
+
+    @Column(length = 250)
+    private String observaciones;
+
+    // Detalle del comprobante; las ventas registradas antes de la V9 no tienen líneas
+    @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("orden ASC")
+    private List<VentaItem> items = new ArrayList<>();
+
+    @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("numero ASC")
+    private List<VentaCuota> cuotas = new ArrayList<>();
+
     public Venta() {
+    }
+
+    public FormaPago getFormaPago() {
+        return formaPago;
+    }
+
+    public void setFormaPago(FormaPago formaPago) {
+        this.formaPago = formaPago;
+    }
+
+    public String getObservaciones() {
+        return observaciones;
+    }
+
+    public void setObservaciones(String observaciones) {
+        this.observaciones = observaciones;
+    }
+
+    public List<VentaItem> getItems() {
+        return items;
+    }
+
+    public List<VentaCuota> getCuotas() {
+        return cuotas;
+    }
+
+    public void agregarItem(VentaItem item) {
+        item.setVenta(this);
+        item.setOrden(items.size() + 1);
+        items.add(item);
+    }
+
+    public void agregarCuota(VentaCuota cuota) {
+        cuota.setVenta(this);
+        cuota.setNumero(cuotas.size() + 1);
+        cuotas.add(cuota);
     }
 
     public Long getId() {

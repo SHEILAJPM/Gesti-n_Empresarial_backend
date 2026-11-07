@@ -68,6 +68,10 @@ public class PlanillaDetalle {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal essalud;
 
+    // Retención de renta de 5ta categoría del mes
+    @Column(name = "renta_quinta", nullable = false, precision = 12, scale = 2)
+    private BigDecimal rentaQuinta = BigDecimal.ZERO;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal neto;
 
@@ -217,5 +221,13 @@ public class PlanillaDetalle {
 
     public void setPagoId(Long pagoId) {
         this.pagoId = pagoId;
+    }
+
+    public BigDecimal getRentaQuinta() {
+        return rentaQuinta;
+    }
+
+    public void setRentaQuinta(BigDecimal rentaQuinta) {
+        this.rentaQuinta = rentaQuinta;
     }
 }

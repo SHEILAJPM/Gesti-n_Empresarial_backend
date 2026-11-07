@@ -9,6 +9,9 @@ import desarrolloWeb.backend.exception.ReglaNegocioException;
 import desarrolloWeb.backend.repository.DocumentoRepository;
 import desarrolloWeb.backend.repository.MarcacionRepository;
 import desarrolloWeb.backend.repository.PagoRepository;
+import desarrolloWeb.backend.repository.IntentoMarcacionRepository;
+import desarrolloWeb.backend.repository.PlanillaDetalleRepository;
+import desarrolloWeb.backend.repository.UsuarioRepository;
 import desarrolloWeb.backend.repository.TrabajadorRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +44,12 @@ class PersonalServiceTest {
     private DocumentoRepository documentoRepository;
     @Mock
     private PagoRepository pagoRepository;
+    @Mock
+    private IntentoMarcacionRepository intentoRepository;
+    @Mock
+    private PlanillaDetalleRepository planillaDetalleRepository;
+    @Mock
+    private UsuarioRepository usuarioRepository;
 
     @InjectMocks
     private PersonalService personalService;
@@ -164,6 +173,28 @@ class PersonalServiceTest {
         ReglaNegocioException error = assertThrows(ReglaNegocioException.class, () -> personalService.eliminar(1L));
 
         assertTrue(error.getMessage().contains("dalo de baja"));
+        verify(trabajadorRepository, never()).delete(any());
+    }
+
+    @Test
+    void eliminarConSoloIntentosRechazadosTambienPideDarDeBaja() {
+        when(trabajadorRepository.findById(1L)).thenReturn(Optional.of(activo()));
+        when(intentoRepository.existsByTrabajadorId(1L)).thenReturn(true);
+
+        ReglaNegocioException error = assertThrows(ReglaNegocioException.class, () -> personalService.eliminar(1L));
+
+        assertTrue(error.getMessage().contains("dalo de baja"));
+        verify(trabajadorRepository, never()).delete(any());
+    }
+
+    @Test
+    void eliminarConCuentaDeUsuarioVinculadaAvisaQueSeDesvincule() {
+        when(trabajadorRepository.findById(1L)).thenReturn(Optional.of(activo()));
+        when(usuarioRepository.existsByTrabajadorId(1L)).thenReturn(true);
+
+        ReglaNegocioException error = assertThrows(ReglaNegocioException.class, () -> personalService.eliminar(1L));
+
+        assertTrue(error.getMessage().contains("cuenta de usuario"), error.getMessage());
         verify(trabajadorRepository, never()).delete(any());
     }
 

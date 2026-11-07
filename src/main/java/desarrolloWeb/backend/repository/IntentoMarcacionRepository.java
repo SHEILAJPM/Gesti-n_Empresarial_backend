@@ -8,4 +8,6 @@ import java.util.List;
 public interface IntentoMarcacionRepository extends JpaRepository<IntentoMarcacion, Long> {
 
     List<IntentoMarcacion> findTop200ByOrderByFechaHoraDesc();
+
+    boolean existsByTrabajadorId(Long trabajadorId);
 }

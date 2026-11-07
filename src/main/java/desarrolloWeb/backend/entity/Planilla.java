@@ -76,7 +76,7 @@ public class Planilla {
     /* Recalcula los totales a partir de los detalles */
     public void totalizar() {
         totalBruto = sumar(detalles.stream().map(PlanillaDetalle::getRemuneracionBruta).toList());
-        totalDescuentos = sumar(detalles.stream().map(PlanillaDetalle::getDescuentoPension).toList());
+        totalDescuentos = sumar(detalles.stream().map(d -> d.getDescuentoPension().add(d.getRentaQuinta())).toList());
         totalNeto = sumar(detalles.stream().map(PlanillaDetalle::getNeto).toList());
         totalEssalud = sumar(detalles.stream().map(PlanillaDetalle::getEssalud).toList());
     }

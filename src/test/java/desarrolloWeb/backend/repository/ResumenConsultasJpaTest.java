@@ -64,6 +64,19 @@ class ResumenConsultasJpaTest {
     }
 
     @Test
+    @DisplayName("el mayor correlativo de cada serie se calcula en la base, comparando números y no texto")
+    void maximoCorrelativoPorSerie() {
+        ventaRepository.save(venta(clienteRuc, TipoComprobante.FACTURA, "F001-10",
+                LocalDate.of(2026, 9, 6), "100.00", "18.00", EstadoVenta.EMITIDA));
+
+        assertAll(
+                () -> assertEquals(10L, ventaRepository.maximoCorrelativo("F001-", 6)),
+                () -> assertEquals(1L, ventaRepository.maximoCorrelativo("B001-", 6)),
+                () -> assertNull(ventaRepository.maximoCorrelativo("F002-", 6))
+        );
+    }
+
+    @Test
     @DisplayName("BETWEEN de compras devuelve solo agosto")
     void comprasEntreFechas() {
         List<Compra> compras = compraRepository.buscarPorPeriodo(DESDE, HASTA);

@@ -8,13 +8,16 @@ import desarrolloWeb.backend.entity.PlanillaDetalle;
 import desarrolloWeb.backend.entity.Trabajador;
 import desarrolloWeb.backend.exception.RecursoNoEncontradoException;
 import desarrolloWeb.backend.exception.ReglaNegocioException;
+import desarrolloWeb.backend.config.ParametrosPlanilla;
 import desarrolloWeb.backend.repository.PagoRepository;
+import desarrolloWeb.backend.repository.PlanillaDetalleRepository;
 import desarrolloWeb.backend.repository.PlanillaRepository;
 import desarrolloWeb.backend.repository.TrabajadorRepository;
 import desarrolloWeb.backend.util.CalculadoraPlanilla;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -38,9 +41,14 @@ public class PlanillaService {
     private final TrabajadorRepository trabajadorRepository;
     private final PagoRepository pagoRepository;
     private final PagoService pagoService;
+    private final PlanillaDetalleRepository detalleRepository;
+    private final ParametrosPlanilla parametros;
 
     public PlanillaService(PlanillaRepository planillaRepository, TrabajadorRepository trabajadorRepository,
-                           PagoRepository pagoRepository, PagoService pagoService) {
+                           PagoRepository pagoRepository, PagoService pagoService,
+                           PlanillaDetalleRepository detalleRepository, ParametrosPlanilla parametros) {
+        this.detalleRepository = detalleRepository;
+        this.parametros = parametros;
         this.planillaRepository = planillaRepository;
         this.trabajadorRepository = trabajadorRepository;
         this.pagoRepository = pagoRepository;
@@ -86,7 +94,7 @@ public class PlanillaService {
         for (Trabajador t : trabajadorRepository.findAll()) {
             int dias = CalculadoraPlanilla.diasLaborados(t.getFechaIngreso(), t.getFechaCese(), periodo);
             if (dias > 0 && motivoOmision(t) == null) {
-                planilla.agregar(crearDetalle(t, dias));
+                planilla.agregar(crearDetalle(t, dias, periodo));
             }
         }
         if (planilla.getDetalles().isEmpty()) {
@@ -149,8 +157,20 @@ public class PlanillaService {
         return null;
     }
 
-    private static PlanillaDetalle crearDetalle(Trabajador t, int dias) {
-        CalculadoraPlanilla.Calculo c = CalculadoraPlanilla.calcular(t.getSueldo(), dias, t.getSistemaPension(), t.getAfp());
+    private PlanillaDetalle crearDetalle(Trabajador t, int dias, YearMonth periodo) {
+        CalculadoraPlanilla.Parametros p = parametros.vigentes();
+        CalculadoraPlanilla.Calculo base = CalculadoraPlanilla.calcular(t.getSueldo(), dias, t.getSistemaPension(), t.getAfp(), p);
+
+        // Renta de 5ta: se proyecta el año con lo ya pagado en planillas aprobadas de meses anteriores
+        List<PlanillaDetalle> anteriores = detalleRepository.buscarAnterioresDelAnio(
+                t.getId(), periodo.getYear(), periodo.getMonthValue(), EstadoPlanilla.APROBADA);
+        BigDecimal percibido = anteriores.stream().map(PlanillaDetalle::getRemuneracionBruta)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Map<Integer, BigDecimal> retenido = anteriores.stream().collect(Collectors.toMap(
+                d -> d.getPlanilla().getMes(), PlanillaDetalle::getRentaQuinta, BigDecimal::add));
+        BigDecimal renta = CalculadoraPlanilla.retencionQuinta(periodo.getMonthValue(), base.remuneracionBruta(),
+                t.getSueldo(), percibido, retenido, p);
+        CalculadoraPlanilla.Calculo c = base.conRentaQuinta(renta);
         PlanillaDetalle d = new PlanillaDetalle();
         d.setTrabajadorId(t.getId());
         d.setNombres(t.getNombres());
@@ -166,6 +186,7 @@ public class PlanillaService {
         d.setTasaPension(c.tasaPension());
         d.setDescuentoPension(c.descuentoPension());
         d.setEssalud(c.essalud());
+        d.setRentaQuinta(c.rentaQuinta());
         d.setNeto(c.neto());
         return d;
     }

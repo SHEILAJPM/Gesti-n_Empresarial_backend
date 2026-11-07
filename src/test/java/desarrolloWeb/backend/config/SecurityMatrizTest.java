@@ -225,4 +225,42 @@ class SecurityMatrizTest {
         mockMvc.perform(get("/api/planillas").with(httpBasic("contabilidad1", "Conta123")))
                 .andExpect(status().isOk());
     }
+
+    // ---------- Vendedor: vende, pero no anula, no corrige ni ve finanzas ----------
+
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor vendedor() {
+        return org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                .user("vendedor.prueba").roles("VENDEDOR");
+    }
+
+    @Test
+    @DisplayName("Vendedor · emite una boleta → 201")
+    void vendedorEmiteBoleta() throws Exception {
+        mockMvc.perform(post("/api/ventas").with(vendedor()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentoCliente\":\"10203040\",\"numeroComprobante\":\"B001-901\",\"fecha\":\""
+                                + LocalDate.now() + "\",\"items\":[{\"descripcion\":\"Mouse\",\"unidad\":\"NIU\","
+                                + "\"cantidad\":1,\"valorUnitario\":40}]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tipoComprobante").value("BOLETA"));
+    }
+
+    @Test
+    @DisplayName("Vendedor · consulta ventas, clientes y productos → 200")
+    void vendedorConsulta() throws Exception {
+        mockMvc.perform(get("/api/ventas").with(vendedor())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/clientes").with(vendedor())).andExpect(status().isOk());
+        mockMvc.perform(get("/api/productos").with(vendedor())).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Vendedor · no anula, no emite notas, no edita clientes ni ve pagos o tributario → 403")
+    void vendedorSinPermisosDeContabilidad() throws Exception {
+        mockMvc.perform(patch("/api/ventas/" + ventaId + "/anular").with(vendedor())).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/notas").with(vendedor())).andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/clientes/1").with(vendedor()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"documento\":\"10203040\",\"nombre\":\"X\"}")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/pagos").with(vendedor())).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/tributario/resumen-mensual?anio=2026&mes=11").with(vendedor())).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/personal").with(vendedor())).andExpect(status().isForbidden());
+    }
 }
