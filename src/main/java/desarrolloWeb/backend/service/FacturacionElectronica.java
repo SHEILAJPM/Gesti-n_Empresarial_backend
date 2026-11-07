@@ -1,6 +1,7 @@
 package desarrolloWeb.backend.service;
 
 import desarrolloWeb.backend.dto.DocumentoElectronico;
+import desarrolloWeb.backend.dto.DocumentoGuia;
 import desarrolloWeb.backend.dto.RespuestaFacturacion;
 
 /* Proveedor de facturación electrónica: el simulador local o APISUNAT. Se elige en FacturacionConfig. */
@@ -13,6 +14,9 @@ public interface FacturacionElectronica {
     String ambiente();
 
     RespuestaFacturacion enviar(DocumentoElectronico documento);
+
+    /* Guía de remisión remitente (09) */
+    RespuestaFacturacion enviarGuia(DocumentoGuia guia);
 
     RespuestaFacturacion consultar(String documentId);
 

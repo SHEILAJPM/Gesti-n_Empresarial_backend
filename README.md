@@ -22,6 +22,7 @@ Frontend (Angular): [Gesti-n_Empresarial_Frontend](https://github.com/SHEILAJPM/
 | Ventas y clientes | Facturas (RUC) y boletas (DNI) con detalle por líneas (productos del catálogo o escritas a mano), IGV, pago al contado o al crédito en cuotas, observaciones, anulación y envío del comprobante electrónico |
 | Productos | Catálogo de productos y servicios (código, descripción, unidad SUNAT y precio sin IGV) para armar los comprobantes |
 | Notas de crédito y débito | Corrigen facturas y boletas aceptadas por SUNAT (series FC01/BC01 y FD01/BD01, motivos de los catálogos 09 y 10): anulación, devolución total o por ítem, descuentos, intereses. Una nota de crédito no puede superar el saldo del comprobante y el resumen tributario las descuenta o suma |
+| Guías de remisión | Guía remitente (serie T001) para trasladar mercadería: motivo (catálogo 20), partida y llegada con ubigeo, peso y bultos, transporte propio (placa y conductor) o contratado (RUC del transportista). Se crea desde una venta o como traslado independiente |
 | Compras y proveedores | Facturas de compra para el crédito fiscal |
 | Tributario | IGV configurable, resumen mensual (débito, crédito e IGV por pagar) y simulador |
 | Pagos | Pagos programados a trabajadores y proveedores |
@@ -91,13 +92,14 @@ Al arrancar por primera vez se crean estos usuarios, solo si no existen y solo s
 
 Las contraseñas no están en el código. En el perfil `local` (base H2 en tu computadora) se usan las de desarrollo: `Admin123`, `Rrhh123`, `Conta123` y `AdminArea123`.
 
-Los roles `TRABAJADOR`, `VENDEDOR` y `ALMACEN` son del personal: cada cuenta va vinculada a la ficha de un trabajador y usa el portal (`/api/mi/**`). Además, `VENDEDOR` emite boletas y facturas y registra clientes nuevos.
+Los roles `TRABAJADOR`, `VENDEDOR` y `ALMACEN` son del personal: cada cuenta va vinculada a la ficha de un trabajador y usa el portal (`/api/mi/**`). Además, `VENDEDOR` emite boletas y facturas, registra clientes nuevos y emite guías; `ALMACEN` consulta ventas, clientes y productos y emite guías de remisión.
 
 | Recurso | Consultar | Modificar |
 |---|---|---|
 | Personal, asistencia y documentos | ADMIN, RRHH (la lista de personal también CONTABILIDAD) | ADMIN, RRHH |
 | Clientes, ventas y productos | ADMIN, CONTABILIDAD, ADMINISTRACION, VENDEDOR | Emitir venta y registrar cliente: ADMIN, ADMINISTRACION, VENDEDOR · editar o borrar clientes y productos: ADMIN, ADMINISTRACION · anular venta: ADMIN, CONTABILIDAD |
 | Notas de crédito y débito | ADMIN, CONTABILIDAD, ADMINISTRACION | ADMIN, CONTABILIDAD, ADMINISTRACION |
+| Guías de remisión | ADMIN, ADMINISTRACION, CONTABILIDAD, ALMACEN, VENDEDOR | ADMIN, ADMINISTRACION, ALMACEN, VENDEDOR |
 | Proveedores y compras | ADMIN, ADMINISTRACION, CONTABILIDAD | ADMIN, ADMINISTRACION, CONTABILIDAD |
 | Planillas | ADMIN, RRHH, CONTABILIDAD | Generar: ADMIN, RRHH · Aprobar: ADMIN, CONTABILIDAD |
 | Pagos | ADMIN, CONTABILIDAD | ADMIN, CONTABILIDAD |
@@ -123,6 +125,7 @@ Todos devuelven JSON. Los errores tienen siempre la misma forma: `{ timestamp, s
 | Pagos | `GET/POST /api/pagos`, `GET /api/pagos/pendientes`, `PUT /api/pagos/{id}/pagar`, `GET /api/pagos/trabajador/{id}`, `GET /api/pagos/proveedor/{id}` |
 | Clientes | `GET/POST /api/clientes`, `GET/PUT/DELETE /api/clientes/{id}`, `GET /api/clientes/buscar`, `GET /api/clientes/documento/{documento}` |
 | Notas | `GET/POST /api/notas` (`?ventaId=` filtra por venta), `GET /api/notas/{id}`, `GET /api/notas/motivos`, `GET /api/notas/{id}/sunat`, `POST /api/notas/{id}/sunat/reenviar` |
+| Guías | `GET/POST /api/guias` (`?ventaId=` filtra por venta), `GET /api/guias/{id}`, `GET /api/guias/motivos`, `GET /api/guias/{id}/sunat`, `POST /api/guias/{id}/sunat/reenviar` |
 | Productos | `GET/POST /api/productos`, `PUT /api/productos/{id}`, `PATCH /api/productos/{id}/estado`, `GET /api/productos/unidades` |
 | Ventas | `GET/POST /api/ventas`, `GET /api/ventas/{id}`, `PATCH /api/ventas/{id}/anular`, `GET /api/ventas/cliente/{id}`, `GET /api/ventas/periodo`, `GET /api/ventas/igv-periodo`, `GET /api/ventas/siguiente-numero`, `GET /api/ventas/reportes/por-comprobante`, `GET /api/ventas/reportes/ticket-promedio` |
 | Facturación electrónica | `GET /api/ventas/{id}/sunat`, `POST /api/ventas/{id}/sunat/reenviar`, `GET /api/facturacion/estado` |

@@ -3,6 +3,9 @@ package desarrolloWeb.backend.service;
 import desarrolloWeb.backend.config.FacturacionProperties;
 import desarrolloWeb.backend.dto.ComprobanteSunatResponse;
 import desarrolloWeb.backend.dto.DocumentoElectronico;
+import desarrolloWeb.backend.dto.DocumentoGuia;
+import desarrolloWeb.backend.entity.Guia;
+import desarrolloWeb.backend.util.MotivoTraslado;
 import desarrolloWeb.backend.dto.RespuestaFacturacion;
 import desarrolloWeb.backend.entity.ComprobanteSunat;
 import desarrolloWeb.backend.entity.EstadoSunat;
@@ -19,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.Map;
 
 /* Emite, consulta y anula el comprobante electrónico de una venta con el proveedor configurado.
@@ -45,6 +49,12 @@ public class FacturacionService {
         enviar(nota.getSunat(), documentoDe(nota), nota.getNumero());
     }
 
+    public void emitir(Guia guia) {
+        DocumentoGuia documento = documentoDe(guia);
+        enviar(guia.getSunat(), documento.fileName(propiedades.emisor().ruc()), guia.getNumero(),
+                () -> proveedor.enviarGuia(documento));
+    }
+
     public void consultar(Venta venta) {
         consultar(venta.getSunat());
     }
@@ -53,24 +63,61 @@ public class FacturacionService {
         consultar(nota.getSunat());
     }
 
+    public void consultar(Guia guia) {
+        consultar(guia.getSunat());
+    }
+
     public ComprobanteSunatResponse respuesta(Nota nota) {
-        ComprobanteSunat c = nota.getSunat();
+        return respuesta(nota.getSunat());
+    }
+
+    public ComprobanteSunatResponse respuesta(Guia guia) {
+        return respuesta(guia.getSunat());
+    }
+
+    private ComprobanteSunatResponse respuesta(ComprobanteSunat c) {
         String pdf = c.getEstado() == EstadoSunat.ACEPTADO ? proveedor.urlPdf(c.getDocumentId(), c.getFileName()) : null;
         return ComprobanteSunatResponse.de(c, pdf);
     }
 
+    /* Guía remitente: motivo (catálogo 20), traslado y, si viene de una venta, su comprobante */
+    DocumentoGuia documentoDe(Guia g) {
+        String[] partes = g.getNumero().split("-");
+        DocumentoGuia.DocumentoRelacionado relacionado = null;
+        if (g.getVenta() != null) {
+            String[] v = g.getVenta().getNumeroComprobante().split("-");
+            relacionado = new DocumentoGuia.DocumentoRelacionado(
+                    g.getVenta().getTipoComprobante() == TipoComprobante.FACTURA ? "01" : "03",
+                    v[0] + "-" + String.format("%08d", Integer.parseInt(v[1])));
+        }
+        List<DocumentoGuia.Linea> lineas = g.getItems().stream()
+                .map(i -> new DocumentoGuia.Linea(i.getCodigo(), i.getDescripcion(), i.getUnidad(), i.getCantidad()))
+                .toList();
+        return new DocumentoGuia(partes[0], Integer.parseInt(partes[1]), g.getFechaEmision(), g.getFechaTraslado(),
+                g.getMotivoCodigo(), MotivoTraslado.CATALOGO.get(g.getMotivoCodigo()), g.getDestinatarioTipoDocumento(),
+                g.getDestinatarioDocumento(), g.getDestinatarioNombre(), g.getPesoBrutoKg(), g.getNumeroBultos(),
+                g.getModalidad().getCodigoSunat(), g.getTransportistaRuc(), g.getTransportistaRazonSocial(),
+                g.getVehiculoPlaca(), g.getConductorDni(), g.getConductorNombres(), g.getConductorLicencia(),
+                g.getPartidaUbigeo(), g.getPartidaDireccion(), g.getLlegadaUbigeo(), g.getLlegadaDireccion(),
+                g.getObservaciones(), relacionado, lineas);
+    }
+
     /* Envía cualquier comprobante (factura, boleta o nota) y deja en c el resultado */
     private void enviar(ComprobanteSunat c, DocumentoElectronico documento, String numero) {
+        enviar(c, documento.fileName(propiedades.emisor().ruc()), numero, () -> proveedor.enviar(documento));
+    }
+
+    private void enviar(ComprobanteSunat c, String fileName, String numero, Supplier<RespuestaFacturacion> envio) {
         if (c.getEstado() == EstadoSunat.ACEPTADO || c.getEstado() == EstadoSunat.PENDIENTE) {
             throw new ReglaNegocioException("El comprobante " + numero + " ya fue enviado");
         }
         c.setProveedor(proveedor.nombre());
-        c.setFileName(documento.fileName(propiedades.emisor().ruc()));
+        c.setFileName(fileName);
         c.setFechaEnvio(LocalDateTime.now());
         c.setXmlUrl(null);
         c.setCdrUrl(null);
         try {
-            RespuestaFacturacion r = proveedor.enviar(documento);
+            RespuestaFacturacion r = envio.get();
             c.setEstado(r.estado());
             c.setDocumentId(r.documentId());
             c.setMensaje(r.mensaje());

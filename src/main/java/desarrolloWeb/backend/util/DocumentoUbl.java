@@ -2,6 +2,7 @@ package desarrolloWeb.backend.util;
 
 import desarrolloWeb.backend.config.FacturacionProperties;
 import desarrolloWeb.backend.dto.DocumentoElectronico;
+import desarrolloWeb.backend.dto.DocumentoGuia;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -20,6 +21,95 @@ public final class DocumentoUbl {
     private static final String MONEDA = "PEN";
 
     private DocumentoUbl() {
+    }
+
+    /* Guía de remisión remitente (DespatchAdvice 09). Antes de usarla en producción conviene compararla con el
+       "Generador JSON" de APISUNAT para guías: SUNAT recibe las GRE por un canal distinto al de las facturas. */
+    public static Map<String, Object> construirGuia(DocumentoGuia g, FacturacionProperties.Emisor emisor) {
+        Map<String, Object> ubl = new LinkedHashMap<>();
+        ubl.put("cbc:UBLVersionID", texto("2.1"));
+        ubl.put("cbc:CustomizationID", texto("2.0"));
+        ubl.put("cbc:ID", texto(g.numero()));
+        ubl.put("cbc:IssueDate", texto(g.fechaEmision().toString()));
+        ubl.put("cbc:IssueTime", texto("00:00:00"));
+        ubl.put("cbc:DespatchAdviceTypeCode", conAtributos("09", Map.of("listAgencyName", "PE:SUNAT",
+                "listName", "Tipo de Documento", "listURI", "urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo01")));
+        if (g.observaciones() != null && !g.observaciones().isBlank()) {
+            ubl.put("cbc:Note", List.of(texto(g.observaciones())));
+        }
+        if (g.relacionado() != null) {
+            ubl.put("cac:AdditionalDocumentReference", List.of(Map.of(
+                    "cbc:ID", texto(g.relacionado().numero()),
+                    "cbc:DocumentTypeCode", texto(g.relacionado().tipo()),
+                    "cbc:DocumentType", texto("01".equals(g.relacionado().tipo()) ? "Factura" : "Boleta de Venta"))));
+        }
+        ubl.put("cac:DespatchSupplierParty", Map.of("cac:Party", parte("6", emisor.ruc(), emisor.razonSocial(), null, null)));
+        ubl.put("cac:DeliveryCustomerParty", Map.of("cac:Party", parte(g.destinatarioTipoDocumento(),
+                g.destinatarioDocumento(), g.destinatarioNombre(), null, null)));
+
+        Map<String, Object> etapa = new LinkedHashMap<>();
+        // Catálogo 18: 01 transporte público, 02 privado
+        etapa.put("cbc:TransportModeCode", texto(g.modalidad()));
+        etapa.put("cac:TransitPeriod", Map.of("cbc:StartDate", texto(g.fechaTraslado().toString())));
+        if ("01".equals(g.modalidad())) {
+            etapa.put("cac:CarrierParty", Map.of(
+                    "cac:PartyIdentification", Map.of("cbc:ID", conAtributos(g.transportistaRuc(), Map.of("schemeID", "6"))),
+                    "cac:PartyLegalEntity", Map.of("cbc:RegistrationName", texto(g.transportistaRazonSocial()))));
+        } else {
+            Map<String, Object> conductor = new LinkedHashMap<>();
+            conductor.put("cbc:ID", conAtributos(g.conductorDni(), Map.of("schemeID", "1")));
+            conductor.put("cbc:FirstName", texto(g.conductorNombres()));
+            conductor.put("cbc:FamilyName", texto(g.conductorNombres()));
+            conductor.put("cbc:JobTitle", texto("Principal"));
+            conductor.put("cac:IdentityDocumentReference", Map.of("cbc:ID", texto(g.conductorLicencia())));
+            etapa.put("cac:DriverPerson", List.of(conductor));
+        }
+
+        Map<String, Object> envio = new LinkedHashMap<>();
+        envio.put("cbc:ID", texto("SUNAT_Envio"));
+        // Catálogo 20: motivo del traslado
+        envio.put("cbc:HandlingCode", conAtributos(g.motivoCodigo(), Map.of("listAgencyName", "PE:SUNAT",
+                "listName", "Motivo de traslado", "listURI", "urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo20")));
+        envio.put("cbc:HandlingInstructions", texto(g.motivoDescripcion()));
+        envio.put("cbc:GrossWeightMeasure", conAtributos(g.pesoBrutoKg().stripTrailingZeros().toPlainString(),
+                Map.of("unitCode", "KGM")));
+        if (g.numeroBultos() != null) {
+            envio.put("cbc:TotalTransportHandlingUnitQuantity", texto(String.valueOf(g.numeroBultos())));
+        }
+        envio.put("cac:ShipmentStage", etapa);
+        envio.put("cac:Delivery", Map.of(
+                "cac:DeliveryAddress", direccion(g.llegadaUbigeo(), g.llegadaDireccion()),
+                "cac:Despatch", Map.of("cac:DespatchAddress", direccion(g.partidaUbigeo(), g.partidaDireccion()))));
+        if ("02".equals(g.modalidad())) {
+            envio.put("cac:TransportHandlingUnit", Map.of("cac:TransportEquipment",
+                    Map.of("cbc:ID", texto(g.vehiculoPlaca().replace("-", "")))));
+        }
+        ubl.put("cac:Shipment", envio);
+
+        List<Object> lineas = new ArrayList<>();
+        for (int i = 0; i < g.lineas().size(); i++) {
+            DocumentoGuia.Linea l = g.lineas().get(i);
+            Map<String, Object> linea = new LinkedHashMap<>();
+            linea.put("cbc:ID", texto(String.valueOf(i + 1)));
+            linea.put("cbc:DeliveredQuantity", conAtributos(l.cantidad().stripTrailingZeros().toPlainString(),
+                    Map.of("unitCode", l.unidad())));
+            linea.put("cac:OrderLineReference", Map.of("cbc:LineID", texto(String.valueOf(i + 1))));
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("cbc:Description", texto(l.descripcion()));
+            if (l.codigo() != null && !l.codigo().isBlank()) {
+                item.put("cac:SellersItemIdentification", Map.of("cbc:ID", texto(l.codigo())));
+            }
+            linea.put("cac:Item", item);
+            lineas.add(linea);
+        }
+        ubl.put("cac:DespatchLine", lineas);
+        return ubl;
+    }
+
+    private static Map<String, Object> direccion(String ubigeo, String linea) {
+        return Map.of(
+                "cbc:ID", conAtributos(ubigeo, Map.of("schemeAgencyName", "PE:INEI", "schemeName", "Ubigeos")),
+                "cac:AddressLine", Map.of("cbc:Line", texto(linea)));
     }
 
     public static Map<String, Object> construir(DocumentoElectronico d, FacturacionProperties.Emisor emisor) {

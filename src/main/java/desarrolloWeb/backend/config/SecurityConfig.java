@@ -99,7 +99,7 @@ public class SecurityConfig {
 
                 // Proveedor de facturación electrónica activo (solo lectura, sin credenciales)
                 .requestMatchers(HttpMethod.GET, "/api/facturacion/estado")
-                    .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION", "VENDEDOR")
+                    .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION", "VENDEDOR", "ALMACEN")
 
                 // Autocompletar nombre o razón social al registrar clientes, proveedores o trabajadores
                 .requestMatchers(HttpMethod.GET, "/api/consultas/**")
@@ -117,9 +117,15 @@ public class SecurityConfig {
 
                 // Catálogo de productos y servicios: lo consulta quien factura o revisa ventas, lo edita quien factura
                 .requestMatchers(HttpMethod.GET, "/api/productos", "/api/productos/**")
-                    .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION", "VENDEDOR")
+                    .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION", "VENDEDOR", "ALMACEN")
                 .requestMatchers("/api/productos", "/api/productos/**")
                     .hasAnyRole("ADMIN", "ADMINISTRACION")
+
+                // Guías de remisión: las emiten Administración, Almacén y los vendedores; Contabilidad las consulta
+                .requestMatchers(HttpMethod.GET, "/api/guias", "/api/guias/**")
+                    .hasAnyRole("ADMIN", "ADMINISTRACION", "CONTABILIDAD", "ALMACEN", "VENDEDOR")
+                .requestMatchers("/api/guias", "/api/guias/**")
+                    .hasAnyRole("ADMIN", "ADMINISTRACION", "ALMACEN", "VENDEDOR")
 
                 // Notas de crédito y débito: las emite quien factura y también Contabilidad (corrige comprobantes)
                 .requestMatchers("/api/notas", "/api/notas/**")
@@ -130,7 +136,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,
                     "/api/ventas", "/api/ventas/**",
                     "/api/clientes", "/api/clientes/**"
-                ).hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION", "VENDEDOR")
+                ).hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION", "VENDEDOR", "ALMACEN")
                 // El vendedor emite boletas y facturas (y reintenta el envío a SUNAT) y registra clientes nuevos;
                 // editar o borrar clientes y anular ventas queda para Administración/Contabilidad
                 .requestMatchers(HttpMethod.POST, "/api/ventas", "/api/ventas/*/sunat/reenviar", "/api/clientes")

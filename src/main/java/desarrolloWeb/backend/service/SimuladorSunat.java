@@ -1,6 +1,7 @@
 package desarrolloWeb.backend.service;
 
 import desarrolloWeb.backend.dto.DocumentoElectronico;
+import desarrolloWeb.backend.dto.DocumentoGuia;
 import desarrolloWeb.backend.dto.RespuestaFacturacion;
 import desarrolloWeb.backend.entity.EstadoSunat;
 
@@ -25,7 +26,13 @@ public class SimuladorSunat implements FacturacionElectronica {
             "La serie no corresponde al tipo de comprobante (F para facturas, B para boletas).",
             "El importe total no coincide con la base imponible más el IGV.",
             "La fecha de emisión no puede ser posterior a hoy.",
-            "La fecha de emisión supera el plazo de " + PLAZO_DIAS + " días para enviar el comprobante.");
+            "La fecha de emisión supera el plazo de " + PLAZO_DIAS + " días para enviar el comprobante.",
+            // Guía de remisión
+            "La guía de remisión remitente usa una serie que empieza con T.",
+            "La fecha de inicio del traslado no puede ser anterior a la emisión de la guía.",
+            "Transporte público: falta el RUC (11 dígitos) o la razón social del transportista.",
+            "Transporte privado: faltan la placa del vehículo o el DNI, nombre y licencia del conductor.",
+            "El ubigeo de partida y de llegada debe tener 6 dígitos.");
 
     @Override
     public String nombre() {
@@ -44,6 +51,38 @@ public class SimuladorSunat implements FacturacionElectronica {
                 ? PREFIJO_OK + UUID.randomUUID()
                 : PREFIJO_RECHAZO + errores.get(0) + "-" + UUID.randomUUID();
         return RespuestaFacturacion.de(EstadoSunat.PENDIENTE, id, "Recibido por el simulador; consulta el estado para ver la respuesta.");
+    }
+
+    @Override
+    public RespuestaFacturacion enviarGuia(DocumentoGuia g) {
+        List<Integer> errores = validarGuia(g);
+        String id = errores.isEmpty()
+                ? PREFIJO_OK + UUID.randomUUID()
+                : PREFIJO_RECHAZO + errores.get(0) + "-" + UUID.randomUUID();
+        return RespuestaFacturacion.de(EstadoSunat.PENDIENTE, id, "Recibido por el simulador; consulta el estado para ver la respuesta.");
+    }
+
+    static List<Integer> validarGuia(DocumentoGuia g) {
+        List<Integer> errores = new ArrayList<>();
+        if (!g.serie().startsWith("T")) errores.add(6);
+        if (g.fechaTraslado().isBefore(g.fechaEmision())) errores.add(7);
+        if ("01".equals(g.modalidad()) && (g.transportistaRuc() == null || !g.transportistaRuc().matches("\\d{11}")
+                || g.transportistaRazonSocial() == null || g.transportistaRazonSocial().isBlank())) {
+            errores.add(8);
+        }
+        if ("02".equals(g.modalidad()) && (vacio(g.vehiculoPlaca()) || g.conductorDni() == null
+                || !g.conductorDni().matches("\\d{8}") || vacio(g.conductorNombres()) || vacio(g.conductorLicencia()))) {
+            errores.add(9);
+        }
+        if (!g.partidaUbigeo().matches("\\d{6}") || !g.llegadaUbigeo().matches("\\d{6}")) errores.add(10);
+        LocalDate hoy = LocalDate.now();
+        if (g.fechaEmision().isAfter(hoy)) errores.add(4);
+        else if (g.fechaEmision().isBefore(hoy.minusDays(PLAZO_DIAS))) errores.add(5);
+        return errores;
+    }
+
+    private static boolean vacio(String s) {
+        return s == null || s.isBlank();
     }
 
     @Override

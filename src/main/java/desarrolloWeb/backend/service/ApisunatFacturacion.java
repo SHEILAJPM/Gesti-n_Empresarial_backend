@@ -2,6 +2,7 @@ package desarrolloWeb.backend.service;
 
 import desarrolloWeb.backend.config.FacturacionProperties;
 import desarrolloWeb.backend.dto.DocumentoElectronico;
+import desarrolloWeb.backend.dto.DocumentoGuia;
 import desarrolloWeb.backend.dto.RespuestaFacturacion;
 import desarrolloWeb.backend.entity.EstadoSunat;
 import desarrolloWeb.backend.util.DocumentoUbl;
@@ -65,6 +66,15 @@ public class ApisunatFacturacion implements FacturacionElectronica {
         Map<String, Object> cuerpo = credencialesBase();
         cuerpo.put("fileName", documento.fileName(emisor.ruc()));
         cuerpo.put("documentBody", DocumentoUbl.construir(documento, emisor));
+        return enviarComando("/personas/v1/sendBill", cuerpo);
+    }
+
+    /* La guía usa el mismo comando: APISUNAT distingue el tipo por el nombre del archivo (RUC-09-T001-...) */
+    @Override
+    public RespuestaFacturacion enviarGuia(DocumentoGuia guia) {
+        Map<String, Object> cuerpo = credencialesBase();
+        cuerpo.put("fileName", guia.fileName(emisor.ruc()));
+        cuerpo.put("documentBody", DocumentoUbl.construirGuia(guia, emisor));
         return enviarComando("/personas/v1/sendBill", cuerpo);
     }
 
