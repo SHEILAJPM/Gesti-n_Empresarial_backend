@@ -127,6 +127,12 @@ public class SecurityConfig {
                 .requestMatchers("/api/guias", "/api/guias/**")
                     .hasAnyRole("ADMIN", "ADMINISTRACION", "ALMACEN", "VENDEDOR")
 
+                // Cuentas por cobrar: Contabilidad registra los cobros; Administración consulta
+                .requestMatchers(HttpMethod.GET, "/api/cobranzas", "/api/cobranzas/**")
+                    .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION")
+                .requestMatchers("/api/cobranzas", "/api/cobranzas/**")
+                    .hasAnyRole("ADMIN", "CONTABILIDAD")
+
                 // Notas de crédito y débito: las emite quien factura y también Contabilidad (corrige comprobantes)
                 .requestMatchers("/api/notas", "/api/notas/**")
                     .hasAnyRole("ADMIN", "CONTABILIDAD", "ADMINISTRACION")

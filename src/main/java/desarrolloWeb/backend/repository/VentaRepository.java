@@ -18,6 +18,12 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
     @Query("SELECT v FROM Venta v JOIN FETCH v.cliente")
     List<Venta> listarConCliente();
 
+    /* Ventas al crédito vigentes con su cliente y cuotas (cuentas por cobrar) */
+    @Query("SELECT DISTINCT v FROM Venta v JOIN FETCH v.cliente LEFT JOIN FETCH v.cuotas "
+            + "WHERE v.formaPago = desarrolloWeb.backend.entity.FormaPago.CREDITO "
+            + "AND v.estado = desarrolloWeb.backend.entity.EstadoVenta.EMITIDA ORDER BY v.fecha")
+    List<Venta> listarAlCredito();
+
     /* Mayor correlativo emitido en una serie (prefijo "F001-"), calculado en la base sin traer las ventas */
     @Query(value = "SELECT MAX(CAST(SUBSTRING(numero_comprobante, :desde) AS BIGINT)) FROM ventas "
             + "WHERE numero_comprobante LIKE CONCAT(:prefijo, '%')", nativeQuery = true)

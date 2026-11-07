@@ -18,6 +18,12 @@ public interface NotaRepository extends JpaRepository<Nota, Long> {
 
     List<Nota> findByVentaIdOrderByIdAsc(Long ventaId);
 
+    List<Nota> findByTipo(TipoNota tipo);
+
+    /* [ventaId, tipo, total] de las notas, agrupadas: una sola consulta para cuentas por cobrar */
+    @Query("SELECT n.venta.id, n.tipo, SUM(n.montoTotal) FROM Nota n GROUP BY n.venta.id, n.tipo")
+    List<Object[]> totalesPorVentaYTipo();
+
     /* Total de las notas de un tipo sobre una venta (para el saldo del comprobante) */
     @Query("SELECT COALESCE(SUM(n.montoTotal), 0) FROM Nota n WHERE n.venta.id = :ventaId AND n.tipo = :tipo")
     BigDecimal totalPorVentaYTipo(@Param("ventaId") Long ventaId, @Param("tipo") TipoNota tipo);

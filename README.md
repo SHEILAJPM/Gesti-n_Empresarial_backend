@@ -22,6 +22,7 @@ Frontend (Angular): [Gesti-n_Empresarial_Frontend](https://github.com/SHEILAJPM/
 | Ventas y clientes | Facturas (RUC) y boletas (DNI) con detalle por líneas (productos del catálogo o escritas a mano), IGV, pago al contado o al crédito en cuotas, observaciones, anulación y envío del comprobante electrónico |
 | Productos | Catálogo de productos y servicios (código, descripción, unidad SUNAT y precio sin IGV) para armar los comprobantes |
 | Notas de crédito y débito | Corrigen facturas y boletas aceptadas por SUNAT (series FC01/BC01 y FD01/BD01, motivos de los catálogos 09 y 10): anulación, devolución total o por ítem, descuentos, intereses. Una nota de crédito no puede superar el saldo del comprobante y el resumen tributario las descuenta o suma |
+| Cuentas por cobrar | Cobros de las ventas al crédito (medio de pago y n.° de operación) aplicados a la cuota más antigua; cuotas pagadas, parciales o vencidas con días de atraso; deuda por cliente. Las notas de crédito rebajan y las de débito suman |
 | Guías de remisión | Guía remitente (serie T001) para trasladar mercadería: motivo (catálogo 20), partida y llegada con ubigeo, peso y bultos, transporte propio (placa y conductor) o contratado (RUC del transportista). Se crea desde una venta o como traslado independiente |
 | Compras y proveedores | Facturas de compra para el crédito fiscal |
 | Tributario | IGV configurable, resumen mensual (débito, crédito e IGV por pagar) y simulador |
@@ -125,6 +126,7 @@ Todos devuelven JSON. Los errores tienen siempre la misma forma: `{ timestamp, s
 | Pagos | `GET/POST /api/pagos`, `GET /api/pagos/pendientes`, `PUT /api/pagos/{id}/pagar`, `GET /api/pagos/trabajador/{id}`, `GET /api/pagos/proveedor/{id}` |
 | Clientes | `GET/POST /api/clientes`, `GET/PUT/DELETE /api/clientes/{id}`, `GET /api/clientes/buscar`, `GET /api/clientes/documento/{documento}` |
 | Notas | `GET/POST /api/notas` (`?ventaId=` filtra por venta), `GET /api/notas/{id}`, `GET /api/notas/motivos`, `GET /api/notas/{id}/sunat`, `POST /api/notas/{id}/sunat/reenviar` |
+| Cobranzas | `GET /api/cobranzas` (`?todas=true` incluye pagadas), `GET /api/cobranzas/resumen`, `GET /api/cobranzas/venta/{ventaId}`, `POST /api/cobranzas` |
 | Guías | `GET/POST /api/guias` (`?ventaId=` filtra por venta), `GET /api/guias/{id}`, `GET /api/guias/motivos`, `GET /api/guias/{id}/sunat`, `POST /api/guias/{id}/sunat/reenviar` |
 | Productos | `GET/POST /api/productos`, `PUT /api/productos/{id}`, `PATCH /api/productos/{id}/estado`, `GET /api/productos/unidades` |
 | Ventas | `GET/POST /api/ventas`, `GET /api/ventas/{id}`, `PATCH /api/ventas/{id}/anular`, `GET /api/ventas/cliente/{id}`, `GET /api/ventas/periodo`, `GET /api/ventas/igv-periodo`, `GET /api/ventas/siguiente-numero`, `GET /api/ventas/reportes/por-comprobante`, `GET /api/ventas/reportes/ticket-promedio` |
